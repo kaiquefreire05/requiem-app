@@ -1,0 +1,86 @@
+/* App.css */
+body {
+  background-color: #121212;
+  color: #e0e0e0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  margin: 0;
+  padding: 0;
+}
+
+.app-container {
+  max-width: 700px;
+  margin: 5vh auto;
+  text-align: center;
+  padding: 40px 20px;
+  background-color: #1e1e1e;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+  border-left: 2px solid #bb86fc; /* Um detalhe visual */
+  border-right: 2px solid #bb86fc;
+}
+
+h1 {
+  color: #bb86fc;
+  letter-spacing: 2px;
+  margin-bottom: 5px;
+}
+
+.subtitle {
+  color: #a0a0a0;
+  font-style: italic;
+  margin-bottom: 30px;
+}
+
+.status-board { margin-bottom: 30px; }
+
+.status-badge {
+  padding: 8px 20px;
+  border-radius: 20px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  background-color: #2c2c2c;
+}
+
+/* Cores de status */
+.status-badge.idle { color: #888; }
+.status-badge.recording { color: #cf6679; box-shadow: 0 0 10px rgba(207, 102, 121, 0.5); }
+.status-badge.processing { color: #f2c94c; animation: pulse 1.5s infinite; }
+.status-badge.playing { color: #03dac6; box-shadow: 0 0 10px rgba(3, 218, 198, 0.5); }
+
+.controls { margin: 30px 0; min-height: 60px; }
+
+.btn {
+  padding: 12px 24px;
+  font-size: 16px;
+  margin: 10px;
+  cursor: pointer;
+  border: none;
+  border-radius: 6px;
+  font-weight: bold;
+  transition: transform 0.2s, filter 0.2s;
+}
+
+.btn:hover { transform: scale(1.05); filter: brightness(1.1); }
+.btn-primary { background-color: #bb86fc; color: #000; }
+.btn-danger { background-color: #cf6679; color: #000; }
+.btn-secondary { background-color: #03dac6; color: #000; }
+
+.log-section { margin-top: 40px; text-align: left; }
+.log-section h3 { font-size: 14px; color: #888; text-transform: uppercase; }
+
+.notes-log {
+  background: #000000;
+  padding: 15px;
+  border-radius: 8px;
+  color: #bb86fc;
+  font-family: 'Courier New', Courier, monospace;
+  min-height: 50px;
+  word-wrap: break-word;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
