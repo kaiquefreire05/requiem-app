@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@magenta/music": "^1.23.1",
+    "@spotify/basic-pitch": "^1.0.1",
+    "@tensorflow/tfjs": "^4.22.0",
     "pitchfinder": "^2.3.4",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
