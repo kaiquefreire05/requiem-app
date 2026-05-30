@@ -4,6 +4,7 @@ import {
   UT_OPTIONS,
   QT_OPTIONS,
 } from "../engine/TonalityAdapter";
+import { Metronome } from "lucide-react";
 
 interface RecordControlsProps {
   isActive: boolean;
@@ -15,8 +16,6 @@ interface RecordControlsProps {
   setUtValue: (val: number) => void;
   bpm: number;
   setBpm: (val: number) => void;
-  harmonicRhythm: number;
-  setHarmonicRhythm: (val: number) => void;
   appState: string;
   isRecording: boolean;
   isProcessing: boolean;
@@ -38,8 +37,6 @@ export function RecordControls({
   setUtValue,
   bpm,
   setBpm,
-  harmonicRhythm,
-  setHarmonicRhythm,
   appState,
   isRecording,
   isProcessing,
@@ -149,28 +146,10 @@ export function RecordControls({
             </div>
           </div>
 
-          {/* Ritmo Harmônico */}
-          <div className="relative group flex items-center">
-            <select
-              value={harmonicRhythm}
-              onChange={(e) => setHarmonicRhythm(Number(e.target.value))}
-              disabled={isActive}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-10"
-            >
-              <option value={4}>Lento (1 acorde/compasso)</option>
-              <option value={2}>Padrão (2 acordes/compasso)</option>
-              <option value={1}>Rápido (4 acordes/compasso)</option>
-            </select>
-            <div className={`flex items-center gap-2 px-4 py-2 rounded-xl border bg-[#111111]/80 text-xs font-light tracking-wide transition-all ${isActive ? 'opacity-50 border-white/5 text-white/30' : 'border-white/10 text-white/60 group-hover:border-white/20 group-hover:text-white/80 group-hover:bg-white/5'}`}>
-              <svg className="w-4 h-4 text-current opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
-              {harmonicRhythm === 4 ? 'Lento' : harmonicRhythm === 2 ? 'Padrão' : 'Rápido'}
-            </div>
-          </div>
-
           {/* BPM */}
           <div className="relative group">
             <div className={`flex items-center gap-2 px-4 py-2 rounded-xl border bg-[#111111]/80 text-xs font-light tracking-wide transition-all ${isActive ? 'opacity-50 border-white/5 text-white/30' : 'border-white/10 text-white/60 group-hover:border-white/20 group-hover:text-white/80 group-hover:bg-white/5'}`}>
-               <svg className="w-4 h-4 text-current opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+               <Metronome className="w-4 h-4 text-current opacity-70" />
                {bpm} BPM
             </div>
             <input 

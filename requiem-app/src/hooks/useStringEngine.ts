@@ -4,7 +4,7 @@ import type { INoteSequence } from "@magenta/music";
 
 export interface UseStringEngineReturn {
   isLoaded: boolean;
-  playSequence: (ns: INoteSequence) => Promise<void>;
+  playSequence: (ns: INoteSequence, startTimeOffset?: number) => Promise<void>;
   stop: () => void;
 }
 
@@ -33,6 +33,7 @@ export function useStringEngine(): UseStringEngineReturn {
         C7: "C7.mp3",
       },
       baseUrl: "https://tonejs.github.io/audio/salamander/",
+      volume: 12, // +12 dB para compensar o baixo ganho das amostras acústicas
       onload: () => {
         setIsLoaded(true);
       },
@@ -63,7 +64,7 @@ export function useStringEngine(): UseStringEngineReturn {
   }, []);
 
   const playSequence = useCallback(
-    async (ns: INoteSequence) => {
+    async (ns: INoteSequence, startTimeOffset: number = 0) => {
       if (!isLoaded || !samplerRef.current) return;
 
       // Garantir que o áudio do Tone.js está desbloqueado
@@ -76,21 +77,21 @@ export function useStringEngine(): UseStringEngineReturn {
 
       // Agendar todas as notas da NoteSequence
       ns.notes?.forEach((note) => {
-        if (note.startTime !== undefined && note.endTime !== undefined && note.pitch !== undefined) {
+        if (note.startTime != null && note.endTime != null && note.pitch != null) {
+          if (note.endTime <= startTimeOffset) return; // Skip finished notes
+
+          const startDelay = Math.max(0, note.startTime - startTimeOffset);
           const freq = Tone.Frequency(note.pitch, "midi").toNote();
-          const duration = note.endTime - note.startTime;
+          const duration = note.endTime - Math.max(note.startTime, startTimeOffset);
           
           sampler.triggerAttackRelease(
             freq,
             duration,
-            now + note.startTime,
-            note.instrument === 0 ? 0.8 : 0.5 // Volume: melodia mais alta que a harmonia
+            now + startDelay,
+            note.instrument === 0 ? 1 : 0.7 // Volume: melodia mais alta que a harmonia
           );
         }
       });
-
-      // Opcional: Se quiser usar o Transport para rastrear o tempo,
-      // Tone.Transport.start(); mas com Tone.now() não é estritamente necessário.
     },
     [isLoaded, stop]
   );

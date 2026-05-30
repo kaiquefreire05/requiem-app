@@ -198,7 +198,8 @@ export function useMetronome({
           triggerPulse();
 
           // Transição count-in → ready após 1 compasso completo
-          if (beat === beatsPerBar - 1) {
+          // Disparamos isso no exato momento que começa o novo compasso (tempo 1)
+          if (beat === beatsPerBar) {
             setIsCountingIn(false);
             setIsReady(true);
           }

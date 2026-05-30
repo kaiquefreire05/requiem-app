@@ -29,9 +29,17 @@ export interface DetectedNote {
 }
 
 export interface UsePitchDetectorReturn {
-  /** Inicia captura do microfone e gravação */
-  startListening: () => Promise<void>;
-  /** Para a gravação, processa a IA e retorna as notas detectadas */
+  /** Pede permissão e liga o microfone (útil para feedback visual durante o count-in) */
+  prepareListening: () => Promise<void>;
+  /** Começa a gravar no MediaRecorder instantaneamente */
+  startRecording: () => void;
+  /** Cancela a gravação e volta ao estado inicial sem processar */
+  cancelListening: () => Promise<void>;
+  /** Para a gravação e guarda o áudio para decisão do usuário */
+  pauseListening: () => Promise<void>;
+  /** Processa o áudio previamente pausado e retorna as notas detectadas */
+  processPausedAudio: () => Promise<DetectedNote[]>;
+  /** Para a gravação, processa a IA e retorna as notas detectadas (atalho antigo) */
   stopListening: () => Promise<DetectedNote[]>;
   /** Se está gravando ativamente */
   isListening: boolean;
@@ -178,6 +186,7 @@ export function usePitchDetector(): UsePitchDetectorReturn {
   const audioChunksRef = useRef<Blob[]>([]);
   const mimeTypeRef = useRef<string>("");
   const basicPitchRef = useRef<BasicPitch | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const modelReadyRef = useRef<Promise<void> | null>(null);
 
   // Refs para detecção em tempo real
@@ -221,9 +230,9 @@ export function usePitchDetector(): UsePitchDetectorReturn {
     rafRef.current = requestAnimationFrame(detectLoop);
   }, []);
 
-  // ── Start ─────────────────────────────────────────────
-  const startListening = useCallback(async () => {
-    if (isListening || isProcessing) return;
+  // ── 1. Prepare (Mic On, Visuals On, NO RECORDING YET) ─
+  const prepareListening = useCallback(async () => {
+    if (streamRef.current || isProcessing) return;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -235,23 +244,7 @@ export function usePitchDetector(): UsePitchDetectorReturn {
         },
       });
 
-      // ── MediaRecorder para transcrição offline ────────
-      const mediaRecorder = new MediaRecorder(stream);
-      audioChunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      // SEM timeslice — todo o áudio é entregue como um único
-      // Blob quando stop() é chamado, evitando chunks fragmentados
-      // que o browser não consegue decodificar.
-      mediaRecorder.start();
-      mimeTypeRef.current = mediaRecorder.mimeType;
-      mediaRecorderRef.current = mediaRecorder;
-      console.log(`[Recorder] Iniciado com mimeType: ${mediaRecorder.mimeType}`);
+      streamRef.current = stream;
 
       // ── AnalyserNode para detecção real-time (visual) ─
       const audioCtx = new AudioContext();
@@ -260,13 +253,11 @@ export function usePitchDetector(): UsePitchDetectorReturn {
       analyser.fftSize = 2048;
       analyser.smoothingTimeConstant = 0;
       source.connect(analyser);
-      // NÃO conectar ao destination (evita feedback)
 
       audioCtxRef.current = audioCtx;
       analyserRef.current = analyser;
       isListeningRef.current = true;
 
-      setIsListening(true);
       setCurrentNote("");
       setCurrentFrequency(0);
 
@@ -275,16 +266,71 @@ export function usePitchDetector(): UsePitchDetectorReturn {
     } catch (err) {
       console.error("Erro ao acessar microfone:", err);
     }
-  }, [isListening, detectLoop]);
+  }, [isProcessing, detectLoop]);
 
-  // ── Stop & Process ────────────────────────────────────
-  const stopListening = useCallback(async (): Promise<DetectedNote[]> => {
-    if (!mediaRecorderRef.current || mediaRecorderRef.current.state === "inactive") {
-      setIsListening(false);
-      return [];
+  // ── 2. Start Recording (Instantâneo) ──────────────────
+  const startRecording = useCallback(() => {
+    if (!streamRef.current || isListening) return;
+
+    const stream = streamRef.current;
+    const mediaRecorder = new MediaRecorder(stream);
+    audioChunksRef.current = [];
+
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        audioChunksRef.current.push(event.data);
+      }
+    };
+
+    mediaRecorder.start();
+    mimeTypeRef.current = mediaRecorder.mimeType;
+    mediaRecorderRef.current = mediaRecorder;
+    setIsListening(true);
+    console.log(`[Recorder] Iniciado com mimeType: ${mediaRecorder.mimeType}`);
+  }, [isListening]);
+
+
+  // ── Cancelamento Instantâneo ──────────────────────────
+  const cancelListening = useCallback(async () => {
+    setIsListening(false);
+    setIsProcessing(false);
+    setCurrentNote("");
+    setCurrentFrequency(0);
+
+    isListeningRef.current = false;
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
     }
 
-    // Parar detecção real-time imediatamente
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.onstop = null; // evita que o onstop processe áudio
+      mediaRecorderRef.current.stop();
+    }
+    mediaRecorderRef.current = null;
+    audioChunksRef.current = [];
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+
+    if (audioCtxRef.current) {
+      await audioCtxRef.current.close();
+      audioCtxRef.current = null;
+      analyserRef.current = null;
+    }
+  }, []);
+
+  // ── Stop & Process ────────────────────────────────────
+  const capturedChunksRef = useRef<Blob[]>([]);
+
+  const pauseListening = useCallback(async () => {
+    if (!mediaRecorderRef.current || mediaRecorderRef.current.state === "inactive") {
+      setIsListening(false);
+      return;
+    }
+
     isListeningRef.current = false;
     if (rafRef.current) {
       cancelAnimationFrame(rafRef.current);
@@ -292,34 +338,42 @@ export function usePitchDetector(): UsePitchDetectorReturn {
     }
 
     setIsListening(false);
+
+    const finalChunks = await new Promise<Blob[]>((resolve) => {
+      const recorder = mediaRecorderRef.current!;
+      recorder.onstop = () => {
+        resolve([...audioChunksRef.current]);
+      };
+      recorder.stop();
+    });
+
+    mediaRecorderRef.current = null;
+    audioChunksRef.current = [];
+    capturedChunksRef.current = finalChunks;
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+
+    if (audioCtxRef.current) {
+      await audioCtxRef.current.close();
+      audioCtxRef.current = null;
+      analyserRef.current = null;
+    }
+  }, []);
+
+  const processPausedAudio = useCallback(async (): Promise<DetectedNote[]> => {
+    const finalChunks = capturedChunksRef.current;
+    if (finalChunks.length === 0) {
+      return [];
+    }
+    
     setIsProcessing(true);
     setCurrentNote("");
     setCurrentFrequency(0);
 
     try {
-      // ── 1. Parar MediaRecorder e coletar chunks ───────
-      const finalChunks = await new Promise<Blob[]>((resolve) => {
-        const recorder = mediaRecorderRef.current!;
-
-        recorder.onstop = () => {
-          recorder.stream.getTracks().forEach((t) => t.stop());
-          resolve([...audioChunksRef.current]);
-        };
-
-        // stop() dispara um último dataavailable com TODO o áudio
-        // restante, seguido do evento stop. Não chamar requestData().
-        recorder.stop();
-      });
-
-      mediaRecorderRef.current = null;
-      audioChunksRef.current = [];
-
-      // Fechar AudioContext da detecção real-time
-      if (audioCtxRef.current) {
-        await audioCtxRef.current.close();
-        audioCtxRef.current = null;
-        analyserRef.current = null;
-      }
 
       if (finalChunks.length === 0) {
         setIsProcessing(false);
@@ -383,7 +437,7 @@ export function usePitchDetector(): UsePitchDetectorReturn {
       console.log(`[BasicPitch] Frames: ${frames.length}`);
 
       // ── 5. Converter → DetectedNote[] ─────────────────
-      const noteEvents = outputToNotesPoly(frames, onsets, 0.7, 0.5, 15, true, null, null, true, 11);
+      const noteEvents = outputToNotesPoly(frames, onsets, 0.5, 0.3, 11, true, null, null, true, 11);
       const notesTime = noteFramesToTime(noteEvents);
 
       const mappedNotes: DetectedNote[] = notesTime.map((note) => ({
@@ -413,8 +467,17 @@ export function usePitchDetector(): UsePitchDetectorReturn {
     }
   }, []);
 
+  const stopListening = useCallback(async (): Promise<DetectedNote[]> => {
+    await pauseListening();
+    return await processPausedAudio();
+  }, [pauseListening, processPausedAudio]);
+
   return {
-    startListening,
+    prepareListening,
+    startRecording,
+    cancelListening,
+    pauseListening,
+    processPausedAudio,
     stopListening,
     isListening,
     isProcessing,

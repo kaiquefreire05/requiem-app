@@ -404,17 +404,19 @@ export function generateProgression(
   playedNotes: readonly DetectedNote[],
   bpm: number,
   harmonicRhythmBeats: number,
+  _timeSignatureNumerator: number,
+  timeSignatureDenominator: number,
   startChord: string = "C",
   markovMatrix_: TransitionMatrix = transitionMatrix,
 ): readonly string[] {
   if (playedNotes.length === 0) return [startChord];
 
-  const secondsPerBeat = 60 / bpm;
+  // ── MUDANÇA: Matemática do Tempo ────────────────────────
+  // O BPM na música digital refere-se a semínimas (denominador 4).
+  // A duração de 1 "Beat" real do compasso atual depende do denominador.
+  const secondsPerBeat = (4 / timeSignatureDenominator) * (60 / bpm);
   
-  // ── MUDANÇA: O Ritmo Harmônico (Resolução) ──────────────
-  // Quantas batidas (beats) cada acorde deve durar?
-  // Se for 2, a IA vai gerar 2 acordes por compasso (em 4/4).
-  // Se for 1, a IA vai gerar 1 acorde por batida (rápido).
+  // A janela de cada acorde
   const secondsPerWindow = secondsPerBeat * harmonicRhythmBeats;
 
   // ── Determinar o range temporal total ─────────────────

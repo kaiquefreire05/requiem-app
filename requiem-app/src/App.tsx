@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   sequences,
-  Player,
   NoteSequence,
 } from "@magenta/music";
 import type { INoteSequence } from "@magenta/music";
@@ -9,11 +8,11 @@ import { useMetronome } from "./hooks/useMetronome";
 import { usePitchDetector } from "./hooks/usePitchDetector";
 import { useStringEngine } from "./hooks/useStringEngine";
 import type { DetectedNote } from "./hooks/usePitchDetector";
-import SheetMusicVisualizer from "./components/SheetMusicVisualizer";
 import { Sidebar } from "./components/Sidebar";
 import { RecordControls } from "./components/RecordControls";
 import { DynamicRing } from "./components/DynamicRing";
-import * as Tone from "tone";
+import { StudioView } from "./components/StudioView";
+import type { AppTab } from "./components/BottomNav";
 import { generateProgression, HARMONY_GRAPH } from "./engine/HarmonyEngine";
 import {
   normalizeNotes,
@@ -27,14 +26,22 @@ export type AppState =
   | "IDLE"
   | "COUNT_IN"
   | "RECORDING"
+  | "REVIEW_RECORDING"
   | "PROCESSING";
 
-// ── Interface para armazenar resultado da harmonização ──
-interface HarmonyResult {
-  /** Progressão de acordes gerada (um por compasso) */
-  readonly progression: readonly string[];
-  /** NoteSequence sintetizado para playback e visualização */
-  readonly noteSequence: INoteSequence;
+export interface ChordSegment {
+  id: string;
+  chord: string;
+  durationBeats: number;
+}
+
+// ── Interface para armazenar blocos de composição ──
+export interface CompositionBlock {
+  id: string;
+  name: string;
+  notes: DetectedNote[];
+  progression: ChordSegment[];
+  noteSequence?: INoteSequence;
 }
 
 // ── Stale-closure-safe label map ────────────────────────
@@ -42,6 +49,7 @@ const STATE_LABELS: Record<AppState, string> = {
   IDLE: "Iniciar Captura",
   COUNT_IN: "Contagem...",
   RECORDING: "Gravando · Clique para parar",
+  REVIEW_RECORDING: "Analisar áudio gravado?",
   PROCESSING: "Transcrevendo áudio e gerando harmonia...",
 };
 
@@ -167,38 +175,37 @@ function buildMelodySequence(
  * sustentado (whole-note / semibreve por compasso).
  */
 function progressionToNoteSequence(
-  progression: readonly string[],
+  progression: ChordSegment[],
   melodyNotes: DetectedNote[],
   bpm: number,
-  harmonicRhythmBeats: number,
+  timeSignatureDenominator: number,
 ): NoteSequence {
   // 1) Montar a melodia quantizada
   const ns = buildMelodySequence(melodyNotes, bpm);
   const stepsPerSecond = sequences.stepsPerQuarterToStepsPerSecond(4, bpm);
-  const secondsPerBeat = 60 / bpm;
-  const secondsPerChord = secondsPerBeat * harmonicRhythmBeats;
-  const stepsPerChord = Math.round(secondsPerChord * stepsPerSecond);
+  const secondsPerBeat = (4 / timeSignatureDenominator) * (60 / bpm);
 
-  // Offset temporal = início das notas gravadas
-  const melodyStart = melodyNotes.length > 0
-    ? Math.min(...melodyNotes.map(n => n.startTime))
-    : 0;
+  let currentStartTime = 0;
 
-  // 2) Para cada acorde na progressão, adicionar as notas correspondentes
-  for (let m = 0; m < progression.length; m++) {
-    const chordName = progression[m];
-    const chordNode = HARMONY_GRAPH[chordName];
-    if (!chordNode) continue;
+  // 2) Para cada segmento de acorde, adicionar as notas correspondentes
+  for (const seg of progression) {
+    const chordNode = HARMONY_GRAPH[seg.chord];
+    if (!chordNode) {
+      currentStartTime += seg.durationBeats * secondsPerBeat;
+      continue;
+    }
 
-    const measureStartTime = melodyStart + m * secondsPerChord;
-    const measureEndTime = measureStartTime + secondsPerChord;
+    const durationSeconds = seg.durationBeats * secondsPerBeat;
+    const measureStartTime = currentStartTime;
+    const measureEndTime = measureStartTime + durationSeconds;
+    
     const qStart = sequences.quantizeToStep(measureStartTime, stepsPerSecond);
+    const stepsPerChord = Math.round(durationSeconds * stepsPerSecond);
     const qEnd = Math.max(qStart + 1, qStart + stepsPerChord);
 
     // Distribuir pitch classes na oitava C3 (MIDI 48+)
     for (const pc of chordNode.notes) {
       const midiPitch = 48 + pc; // C3 base
-
       ns.notes!.push(
         NoteSequence.Note.create({
           pitch: midiPitch,
@@ -211,6 +218,8 @@ function progressionToNoteSequence(
         }),
       );
     }
+    
+    currentStartTime = measureEndTime;
   }
 
   // 3) Recalcular totalQuantizedSteps
@@ -236,15 +245,21 @@ export default function App() {
   const [tonality, setTonality] = useState("C");
   const timeSignature = `${qtValue}/${utValue}`;
   const [appState, setAppState] = useState<AppState>("IDLE");
-  const [harmonicRhythm, setHarmonicRhythm] = useState<number>(2);
-  const [currentResult, setCurrentResult] = useState<HarmonyResult | null>(null);
+  
+  const [blocks, setBlocks] = useState<CompositionBlock[]>([
+    { id: "1", name: "Verso 1", notes: [], progression: [] }
+  ]);
+  const [activeBlockId, setActiveBlockId] = useState<string>("1");
+  const activeBlock = blocks.find(b => b.id === activeBlockId);
+
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<AppTab>("vibe");
 
   // ── Refs ──────────────────────────────────────────────
   const appStateRef = useRef<AppState>("IDLE");
   const playingIndexRef = useRef<number | null>(null);
-  const lastGluedNotesRef = useRef<DetectedNote[]>([]);
+  const recordedBpmRef = useRef<number>(120);
 
   // Manter ref sincronizado com state (para closures)
   useEffect(() => {
@@ -256,14 +271,11 @@ export default function App() {
   const pitchDetector = usePitchDetector();
   const stringEngine = useStringEngine();
 
-  // ── beatsPerMeasure derivado diretamente do QT ────────
-  const beatsPerMeasure = qtValue;
-
   // ── Reagir ao isReady do metrônomo (count-in → recording) ─
   useEffect(() => {
     if (metronome.isReady && appStateRef.current === "COUNT_IN") {
       setAppState("RECORDING");
-      pitchDetector.startListening();
+      pitchDetector.startRecording();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [metronome.isReady]);
@@ -279,7 +291,7 @@ export default function App() {
   }, []);
 
   // ── Controle de Playback por item ─────────────────────
-  const playSequence = useCallback(async (index: number, seq: INoteSequence) => {
+  const playSequence = useCallback(async (index: number, seq: INoteSequence, offset: number = 0) => {
     try {
       if (playingIndexRef.current === index) {
         stringEngine.stop();
@@ -294,7 +306,7 @@ export default function App() {
       setPlayingIndex(index);
       playingIndexRef.current = index;
 
-      await stringEngine.playSequence(seq);
+      await stringEngine.playSequence(seq, offset);
 
       // Calcular a duração aproximada para liberar o botão
       const totalDuration = seq.notes?.reduce((max, note) => Math.max(max, note.endTime || 0), 0) || 0;
@@ -312,6 +324,22 @@ export default function App() {
     }
   }, [stringEngine]);
 
+  // ── Ring Click (Cancelar ou Iniciar) ──────────────────
+  const handleRingClick = useCallback(async () => {
+    if (appState === "RECORDING") {
+      metronome.stop();
+      await pitchDetector.pauseListening();
+      setAppState("REVIEW_RECORDING");
+    } else if (appState === "COUNT_IN" || appState === "PROCESSING" || appState === "REVIEW_RECORDING") {
+      metronome.stop();
+      pitchDetector.cancelListening();
+      setAppState("IDLE");
+    } else if (appState === "IDLE") {
+      // Iniciar pelo anel também é válido
+      // Mas para manter as regras de UI, usaremos o handleMainButtonClick
+    }
+  }, [appState, metronome, pitchDetector]);
+
   // ── Handler principal do botão ────────────────────────
   const handleMainButtonClick = useCallback(async () => {
     const current = appStateRef.current;
@@ -321,18 +349,33 @@ export default function App() {
       // ── IDLE → COUNT_IN ───────────────────────────────
       case "IDLE": {
         setAppState("COUNT_IN");
+        await pitchDetector.prepareListening(); // Prepara mic (pede permissão) ANTES de iniciar contagem
         await metronome.start();
         break;
       }
 
-      // ── RECORDING → PROCESSING → PLAYING_AND_SHOWING ─
-      case "RECORDING": {
-        // 1) Parar metrônomo e ativar loading Imediatamente
-        metronome.stop();
+      // ── RECORDING → (agora é capturado pelo anel, mas deixamos vazio por segurança)
+      case "RECORDING":
+        break;
+
+      // ── REVIEW_RECORDING → PROCESSING → PLAYING_AND_SHOWING ─
+      case "REVIEW_RECORDING": {
+        await processRecording();
+        break;
+      }
+
+      // COUNT_IN e PROCESSING: não fazem nada no clique
+      default:
+        break;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bpm, qtValue, utValue, tonality, activeBlockId, playSequence]);
+
+  const processRecording = async () => {
         setAppState("PROCESSING");
 
         // 2) A rede neural do Basic Pitch avalia o áudio (demora alguns segundos)
-        const detectedNotes = await pitchDetector.stopListening();
+        const detectedNotes = await pitchDetector.processPausedAudio();
 
         if (detectedNotes.length === 0) {
           setErrorMsg("Nenhuma nota detectada. Tente novamente.");
@@ -343,7 +386,7 @@ export default function App() {
         try {
           // 3) Pré-processar notas
           const gluedNotes = glueNotes(detectedNotes);
-          lastGluedNotesRef.current = gluedNotes;
+          recordedBpmRef.current = bpm;
 
           console.log(`[Pipeline] Notas brutas: ${detectedNotes.length} → Após glue: ${gluedNotes.length}`);
           if (gluedNotes.length > 0) {
@@ -359,27 +402,39 @@ export default function App() {
           const rawProgression = generateProgression(
             normalizedNotes,
             bpm,
-            harmonicRhythm,
+            qtValue, // 1 acorde por compasso (duration = qtValue)
+            qtValue,
+            utValue,
             "C",
           );
 
           console.log(`[Pipeline] Progressão bruta (C): [${rawProgression.join(", ")}]`);
 
           // 6) Transpor progressão de volta para a tonalidade do usuário
-          const progression = transposeProgression(rawProgression, tonality);
+          const progressionString = transposeProgression(rawProgression, tonality);
+          
+          const progression: ChordSegment[] = progressionString.map(chord => ({
+            id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
+            chord,
+            durationBeats: qtValue
+          }));
 
-          console.log(`[Pipeline] Progressão final (${tonality}): [${progression.join(", ")}]`);
+          console.log(`[Pipeline] Progressão final (${tonality}): [${progressionString.join(", ")}]`);
 
           // 7) Sintetizar em NoteSequence (melodia + acordes)
           const noteSequence = progressionToNoteSequence(
             progression,
             gluedNotes,
             bpm,
-            harmonicRhythm,
+            utValue,
           );
 
           // 8) Adicionar resultado
-          setCurrentResult({ progression, noteSequence });
+          setBlocks(prev => prev.map(b => 
+            b.id === activeBlockId 
+              ? { ...b, notes: gluedNotes, progression, noteSequence } 
+              : b
+          ));
           setAppState("IDLE");
 
         } catch (err) {
@@ -389,49 +444,78 @@ export default function App() {
           );
           setAppState("IDLE");
         }
-        break;
-      }
+  };
 
-      // COUNT_IN e PROCESSING: não fazem nada no clique
-      default:
-        break;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bpm, harmonicRhythm, tonality, currentResult, playSequence]);
+  const handleStopAndProcess = async () => {
+    metronome.stop();
+    await pitchDetector.pauseListening();
+    await processRecording();
+  };
 
-  // ── Atualizar Ritmo Harmônico dinamicamente ───────────
-  const handleRhythmChange = useCallback((newRhythm: number) => {
-    setHarmonicRhythm(newRhythm);
-
-    const gluedNotes = lastGluedNotesRef.current;
-    if (gluedNotes.length > 0) {
+  // ── Atualizar Progressão ───────────────────────────────
+  const handleUpdateProgression = useCallback((newProgression: ChordSegment[]) => {
+    setBlocks(prev => prev.map(b => {
+      if (b.id !== activeBlockId || b.notes.length === 0) return b;
       try {
-        const normalizedNotes = normalizeNotes(gluedNotes, tonality);
-        const rawProgression = generateProgression(
-          normalizedNotes,
-          bpm,
-          newRhythm,
-          "C",
-        );
-        const progression = transposeProgression(rawProgression, tonality);
         const noteSequence = progressionToNoteSequence(
-          progression,
-          gluedNotes,
+          newProgression,
+          b.notes,
           bpm,
-          newRhythm,
+          utValue,
         );
-        setCurrentResult({ progression, noteSequence });
-        // Reiniciar player se estiver tocando
-        if (playingIndexRef.current === 0) {
-           stringEngine.stop();
-           setPlayingIndex(null);
-           playingIndexRef.current = null;
-        }
+        return { ...b, progression: newProgression, noteSequence };
       } catch (err) {
-        console.error("Erro ao regenerar harmonia:", err);
+        console.error("Erro ao atualizar progressão:", err);
+        return b;
       }
+    }));
+    
+    // Reiniciar player se estiver tocando
+    if (playingIndexRef.current === 0) {
+       stringEngine.stop();
+       setPlayingIndex(null);
+       playingIndexRef.current = null;
     }
-  }, [bpm, tonality]);
+  }, [bpm, utValue, activeBlockId, stringEngine]);
+
+  // ── Alterar Velocidade de Execução (BPM) ──────────────
+  useEffect(() => {
+    if (appState !== "IDLE") return;
+    if (recordedBpmRef.current === bpm) return;
+
+    const ratio = recordedBpmRef.current / bpm;
+    
+    setBlocks(prev => prev.map(b => {
+      if (b.notes.length === 0) return b;
+      
+      const scaledNotes = b.notes.map(n => ({
+        ...n,
+        startTime: n.startTime * ratio,
+        endTime: n.endTime * ratio
+      }));
+      
+      try {
+        const noteSequence = progressionToNoteSequence(
+          b.progression,
+          scaledNotes,
+          bpm,
+          utValue,
+        );
+        return { ...b, notes: scaledNotes, noteSequence };
+      } catch (err) {
+        return b;
+      }
+    }));
+    
+    recordedBpmRef.current = bpm;
+
+    if (playingIndexRef.current === 0) {
+       stringEngine.stop();
+       setPlayingIndex(null);
+       playingIndexRef.current = null;
+    }
+  }, [bpm, appState, qtValue, utValue, stringEngine]);
+
 
   // ── Derivações visuais ────────────────────────────────
   const isActive = appState !== "IDLE";
@@ -446,142 +530,227 @@ export default function App() {
     "Teste de Microfone",
   ];
 
+  // Auto-switch to Studio when result is generated
+  useEffect(() => {
+    if (activeBlock?.noteSequence && activeTab === "vibe") {
+      setActiveTab("studio");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeBlock?.noteSequence]);
+
+  const handleRecordAgain = useCallback(() => {
+    // Apaga apenas o bloco ativo
+    setBlocks(prev => prev.map(b => 
+      b.id === activeBlockId ? { ...b, notes: [], progression: [], noteSequence: undefined } : b
+    ));
+    setActiveTab("vibe");
+    setAppState("IDLE");
+  }, [activeBlockId]);
+
+  const handleAddBlock = useCallback(async () => {
+    const id = Date.now().toString();
+    const newBlock: CompositionBlock = {
+      id,
+      name: `Seção ${blocks.length + 1}`,
+      notes: [],
+      progression: []
+    };
+    setBlocks(prev => [...prev, newBlock]);
+    setActiveBlockId(id);
+    
+    // Inicia gravação In-Place
+    if (appStateRef.current === "IDLE") {
+      setAppState("COUNT_IN");
+      await pitchDetector.prepareListening();
+      await metronome.start();
+    }
+  }, [blocks.length, pitchDetector, metronome]);
+
+  const handleRemoveBlock = useCallback((idToRemove: string) => {
+    setBlocks(prev => {
+      const next = prev.filter(b => b.id !== idToRemove);
+      // Se apagar o ativo, ativa o primeiro disponível (se houver)
+      if (idToRemove === activeBlockId && next.length > 0) {
+        setActiveBlockId(next[0].id);
+      }
+      return next.length > 0 ? next : [{ id: Date.now().toString(), name: "Seção 1", notes: [], progression: [] }];
+    });
+  }, [activeBlockId]);
+
+  const handleRenameBlock = useCallback((id: string, newName: string) => {
+    setBlocks(prev => prev.map(b => b.id === id ? { ...b, name: newName } : b));
+  }, []);
+
   return (
-    // Fundo PRETO PURO
     <div className="flex h-screen w-full bg-black text-white overflow-hidden font-sans antialiased">
 
-      {/* ─── SIDEBAR ─── */}
+      {/* ─── SIDEBAR (Present on all views) ─── */}
       <Sidebar
         isSidebarOpen={isSidebarOpen}
         setIsSidebarOpen={setIsSidebarOpen}
         recentMelodies={recentMelodies}
       />
 
-      {/* ─── ÁREA PRINCIPAL ─── */}
-      <main className="relative flex-1 flex flex-col justify-between p-8 overflow-hidden bg-black">
+      {/* ─── VIBE VIEW ─── */}
+      {activeTab === "vibe" && (
+        <main className="relative flex-1 flex flex-col justify-between p-8 overflow-hidden bg-black">
 
-        {/* Camada da Aurora (Cores do Logo: Carmesim, Roxo Profundo) */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none z-0 mix-blend-screen">
-          <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] rounded-full bg-red-800/20 blur-[130px] animate-aurora-slow" />
-          <div className="absolute top-[20%] right-[-10%] w-[550px] h-[550px] rounded-full bg-rose-900/15 blur-[120px] animate-aurora-delayed" />
-          <div className="absolute bottom-[-15%] left-[10%] w-[500px] h-[500px] rounded-full bg-purple-900/20 blur-[140px] animate-aurora-slow" />
-        </div>
+          {/* Corpo Central */}
+          <div className="relative z-10 flex flex-col flex-1 items-center justify-center text-center overflow-hidden">
+            <div className="w-full max-w-4xl px-4 flex flex-col items-center transition-all duration-500 ease-in-out">
 
-        {/* Corpo Central / Layout Flex */}
-        <div className="relative z-10 flex flex-col flex-1 items-center justify-center text-center overflow-hidden">
-          
-          {/* Main Container */}
-          <div className="w-full max-w-4xl px-4 flex flex-col items-center transition-all duration-500 ease-in-out">
+              <DynamicRing 
+                isActive={isActive} 
+                currentFrequency={pitchDetector.currentFrequency}
+                currentNote={pitchDetector.currentNote}
+                onClick={handleRingClick}
+              />
 
-            {!currentResult ? (
-              <>
-                <DynamicRing isActive={isActive} currentFrequency={pitchDetector.currentFrequency} />
-
-                <h1 className="text-3xl sm:text-4xl font-normal tracking-tight text-white/90 mb-3 drop-shadow-md">
-                  Transforme melodia em <span className="font-medium bg-clip-text text-transparent bg-gradient-to-r from-red-400 via-rose-400 to-purple-500">harmonia</span>.
+              <div className={`w-full flex flex-col items-center transition-all duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isActive ? 'opacity-0 h-0 scale-90 pointer-events-none' : 'opacity-100 h-auto scale-100'}`}>
+                <h1 className="text-3xl sm:text-4xl font-normal tracking-tight text-white/90 mb-10 drop-shadow-md">
+                  Olá! O que iremos compor hoje?
                 </h1>
 
-                <p className="text-xs sm:text-sm font-light text-white/50 tracking-wide mb-10 max-w-sm mx-auto leading-relaxed">
-                  Toque uma nota contínua. A IA cuidará do contraponto em tempo real baseado nos seus parâmetros.
-                </p>
-                
                 <RecordControls
-                  isActive={isActive}
-                  tonality={tonality}
-                  setTonality={setTonality}
-                  qtValue={qtValue}
-                  setQtValue={setQtValue}
-                  utValue={utValue}
-                  setUtValue={setUtValue}
-                  bpm={bpm}
-                  setBpm={setBpm}
-                  harmonicRhythm={harmonicRhythm}
-                  setHarmonicRhythm={handleRhythmChange}
-                  appState={appState}
-                  isRecording={isRecording}
-                  isProcessing={isProcessing}
-                  currentBeat={metronome.currentBeat}
-                  currentFrequency={pitchDetector.currentFrequency}
-                  currentNote={pitchDetector.currentNote}
-                  isButtonDisabled={isButtonDisabled}
-                  handleMainButtonClick={handleMainButtonClick}
-                  stateLabels={STATE_LABELS}
-                />
-              </>
-            ) : (
-              <div className="w-full flex flex-col gap-6 animate-fade-in items-center">
-                <div className="w-full relative flex flex-col items-center bg-[#111111]/80 backdrop-blur-xl border border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl">
-                  <div className="flex justify-between items-center w-full mb-6">
-                    <h2 className="text-sm font-mono tracking-[0.2em] text-white/60 uppercase">
-                      Harmonia Gerada
-                    </h2>
+                  isActive={false} // It is hidden when active, so it never shows disabled states
 
-                    <button
-                      onClick={() => playSequence(0, currentResult.noteSequence)}
-                      className={`p-3 rounded-full transition-colors flex items-center justify-center ${playingIndex === 0 ? 'bg-emerald-500/20 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-white/5 text-white/80 hover:bg-white/10'
-                        }`}
-                    >
-                      {playingIndex === 0 ? (
-                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                          <rect x="6" y="6" width="12" height="12" rx="2" />
-                        </svg>
-                      ) : (
-                        <svg className="w-5 h-5 ml-1" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M8 5v14l11-7z" />
-                        </svg>
-                      )}
-                    </button>
-                  </div>
-
-                  {/* Progressão de acordes */}
-                  <div className="flex flex-wrap gap-2 w-full mb-6 justify-center">
-                    {currentResult.progression.map((chord, ci) => (
-                      <span
-                        key={ci}
-                        className="inline-flex items-center px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-sm font-mono text-white/90 tracking-wide"
-                      >
-                        <span className="text-[10px] text-white/30 mr-2">{ci + 1}.</span>
-                        {chord}
-                      </span>
-                    ))}
-                  </div>
-
-                  <div className="w-full bg-black/50 rounded-xl p-4 border border-white/5 overflow-x-auto">
-                    <SheetMusicVisualizer noteSequence={currentResult.noteSequence} />
-                  </div>
-                </div>
-
+                tonality={tonality}
+                setTonality={setTonality}
+                qtValue={qtValue}
+                setQtValue={setQtValue}
+                utValue={utValue}
+                setUtValue={setUtValue}
+                bpm={bpm}
+                setBpm={setBpm}
+                appState={appState}
+                isRecording={isRecording}
+                isProcessing={isProcessing}
+                currentBeat={metronome.currentBeat}
+                currentFrequency={pitchDetector.currentFrequency}
+                currentNote={pitchDetector.currentNote}
+                isButtonDisabled={isButtonDisabled}
+                handleMainButtonClick={handleMainButtonClick}
+                stateLabels={STATE_LABELS}
+              />
+            </div>
+            
+            {appState === "REVIEW_RECORDING" && (
+              <div className="flex gap-4 mt-8 animate-fade-in z-20">
                 <button 
                   onClick={() => {
-                    setCurrentResult(null);
-                    setPlayingIndex(null);
-                    stringEngine.stop();
+                    pitchDetector.cancelListening();
+                    setAppState("IDLE");
                   }}
-                  className="px-6 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 hover:text-white transition-all text-sm tracking-wide font-light flex items-center gap-2"
+                  className="px-6 py-2.5 rounded-full border border-white/20 text-white/70 hover:bg-white/5 hover:text-white transition-colors"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg>
-                  Gravar Novamente
+                  Descartar
+                </button>
+                <button 
+                  onClick={handleMainButtonClick}
+                  className="px-6 py-2.5 rounded-full bg-white text-black font-medium hover:scale-105 transition-transform shadow-[0_0_20px_rgba(255,255,255,0.3)]"
+                >
+                  Gerar Harmonia
                 </button>
               </div>
             )}
 
-            {/* MENSAGEM DE ERRO */}
-            {errorMsg && (
-              <div className="mt-4 px-4 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-mono animate-fade-in">
-                {errorMsg}
-              </div>
-            )}
+            {appState === "PROCESSING" && <ProcessingText />}
 
+              {/* MENSAGEM DE ERRO */}
+              {errorMsg && (
+                <div className="mt-4 px-4 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-mono animate-fade-in">
+                  {errorMsg}
+                </div>
+              )}
+            </div>
           </div>
+
+          {/* Footer */}
+          <footer className="relative z-10 w-full text-center text-[10px] font-mono tracking-[0.2em] text-white/30 max-w-5xl mx-auto">
+            &copy; {new Date().getFullYear()} REQUIEM LABS &bull; HARMONY ENGINE v1.0
+          </footer>
+        </main>
+      )}
+
+      {/* ─── STUDIO VIEW ─── */}
+      {activeTab === "studio" && activeBlock && (
+        <main className="flex-1 flex flex-col overflow-hidden">
+          <StudioView
+            blocks={blocks}
+            activeBlockId={activeBlockId}
+            onActiveBlockChange={setActiveBlockId}
+            onAddBlock={handleAddBlock}
+            onRemoveBlock={handleRemoveBlock}
+            onRenameBlock={handleRenameBlock}
+            appState={appState}
+            currentFrequency={pitchDetector.currentFrequency}
+            onStopRecording={handleStopAndProcess}
+            noteSequence={activeBlock.noteSequence!}
+            progression={activeBlock.progression}
+            bpm={bpm}
+            setBpm={setBpm}
+            qtValue={qtValue}
+            setQtValue={setQtValue}
+            utValue={utValue}
+            setUtValue={setUtValue}
+            isPlaying={playingIndex === 0}
+            onPlay={(timeOffset) => {
+              if (activeBlock.noteSequence) playSequence(0, activeBlock.noteSequence, timeOffset);
+            }}
+            onStop={() => {
+              stringEngine.stop();
+              setPlayingIndex(null);
+              playingIndexRef.current = null;
+            }}
+            onUpdateProgression={handleUpdateProgression}
+            onRecordAgain={handleRecordAgain}
+          />
+        </main>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// Componente de Processamento (Terminal Log)
+// ─────────────────────────────────────────────────────────
+const PROCESSING_MESSAGES = [
+  "Preparando áudio gravado...",
+  "Ouvindo as notas e detectando o tom...",
+  "Analisando padrões harmônicos...",
+  "Consultando banco de músicas para referências...",
+  "Pensando nos melhores acordes...",
+  "Mapeando a estrutura no Piano Roll..."
+];
+
+function ProcessingText() {
+  const [msgIndex, setMsgIndex] = useState(0);
+  
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setMsgIndex(prev => prev + 1);
+    }, 1500);
+    return () => clearInterval(interval);
+  }, []);
+
+  const visibleLogs = PROCESSING_MESSAGES.slice(0, msgIndex + 1);
+  
+  return (
+    <div className="mt-12 flex flex-col items-start w-full max-w-md font-mono text-xs sm:text-sm text-white/70 min-h-[8rem] text-left transition-all">
+      {visibleLogs.map((log, i) => (
+        <div key={i} className="animate-fade-in flex items-start gap-3 mb-1.5 opacity-90">
+          <span className="text-white/30 select-none">{`>`}</span>
+          <span className="leading-tight">{log}</span>
         </div>
-
-        {/* Footer */}
-        <footer className="relative z-10 w-full text-center text-[10px] font-mono tracking-[0.2em] text-white/30 max-w-5xl mx-auto">
-          &copy; {new Date().getFullYear()} REQUIEM LABS &bull; HARMONY ENGINE v1.0
-        </footer>
-
-      </main>
-
+      ))}
+      
+      {/* Blinking cursor */}
+      {visibleLogs.length < PROCESSING_MESSAGES.length && (
+        <div className="animate-pulse flex items-start gap-3 mt-1">
+          <span className="text-white/30 select-none">{`>`}</span>
+          <span className="w-2 h-3.5 bg-white/50 mt-0.5" />
+        </div>
+      )}
     </div>
   );
 }
