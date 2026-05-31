@@ -66,7 +66,18 @@ function SheetMusicVisualizerInner({
     
     // A partitura desenha com base em startTime/endTime em segundos.
     // Desquantizamos aqui para não afetar o Player (que usa o original quantizado).
-    const seqToDraw = sequences.unquantizeSequence(noteSequence);
+    const safeSeq = sequences.clone(noteSequence);
+    
+    // Pegamos o BPM atual que veio do seu slider (ou 120 como fallback)
+    const currentQpm = safeSeq.tempos && safeSeq.tempos.length > 0 
+      ? safeSeq.tempos[0].qpm 
+      : 120;
+      
+    // Sobrescrevemos o array de tempos garantindo que o "time" seja EXATAMENTE 0
+    safeSeq.tempos = [{ time: 0, qpm: currentQpm }];
+    
+    // Agora desquantizamos com segurança, sem o Magenta surtar
+    const seqToDraw = sequences.unquantizeSequence(safeSeq);
 
     vizRef.current = new StaffSVGVisualizer(
       seqToDraw,

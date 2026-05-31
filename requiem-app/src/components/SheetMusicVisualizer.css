@@ -8,36 +8,12 @@
 .sheet-music-visualizer {
   position: relative;
   width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px 24px 24px 4px; /* Balão de chat (chat bubble) */
+  background: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   backdrop-filter: blur(12px);
-  padding: 20px 16px;
-}
-
-/* ── Scrollbar estilizada ──────────────────────────── */
-.sheet-music-visualizer::-webkit-scrollbar {
-  height: 6px;
-}
-
-.sheet-music-visualizer::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.sheet-music-visualizer::-webkit-scrollbar-thumb {
-  background: rgba(220, 80, 80, 0.4);
-  border-radius: 3px;
-}
-
-.sheet-music-visualizer::-webkit-scrollbar-thumb:hover {
-  background: rgba(220, 80, 80, 0.6);
-}
-
-.sheet-music-visualizer {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(220, 80, 80, 0.4) transparent;
+  padding: 24px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
 }
 
 /* ── SVG gerado internamente pelo Magenta ──────────── */

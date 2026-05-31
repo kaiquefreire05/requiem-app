@@ -1,0 +1,103 @@
+import { useState, useEffect, useRef, useCallback } from "react";
+import * as Tone from "tone";
+import type { INoteSequence } from "@magenta/music";
+
+export interface UseStringEngineReturn {
+  isLoaded: boolean;
+  playSequence: (ns: INoteSequence, startTimeOffset?: number) => Promise<void>;
+  stop: () => void;
+}
+
+export function useStringEngine(): UseStringEngineReturn {
+  const [isLoaded, setIsLoaded] = useState(false);
+  const samplerRef = useRef<Tone.Sampler | null>(null);
+  const reverbRef = useRef<Tone.Reverb | null>(null);
+
+  useEffect(() => {
+    // 1. Instanciar o Reverb
+    const reverb = new Tone.Reverb({
+      decay: 2.5,
+      preDelay: 0.1,
+    });
+
+    // 2. Instanciar o Sampler (Salamander Grand Piano)
+    const sampler = new Tone.Sampler({
+      urls: {
+        A0: "A0.mp3",
+        C1: "C1.mp3",
+        C2: "C2.mp3",
+        C3: "C3.mp3",
+        C4: "C4.mp3",
+        C5: "C5.mp3",
+        C6: "C6.mp3",
+        C7: "C7.mp3",
+      },
+      baseUrl: "https://tonejs.github.io/audio/salamander/",
+      volume: 12, // +12 dB para compensar o baixo ganho das amostras acústicas
+      onload: () => {
+        setIsLoaded(true);
+      },
+    });
+
+    // 3. Conectar a cadeia de sinal: Sampler -> Reverb -> Master
+    sampler.chain(reverb, Tone.Destination);
+
+    // Guardar as refs
+    samplerRef.current = sampler;
+    reverbRef.current = reverb;
+
+    // 4. Limpeza da memória (prevenir memory leaks)
+    return () => {
+      sampler.dispose();
+      reverb.dispose();
+      Tone.Transport.stop();
+      Tone.Transport.cancel();
+    };
+  }, []);
+
+  const stop = useCallback(() => {
+    Tone.Transport.stop();
+    Tone.Transport.cancel(); // Limpa a fila de eventos agendados
+    if (samplerRef.current) {
+      samplerRef.current.releaseAll();
+    }
+  }, []);
+
+  const playSequence = useCallback(
+    async (ns: INoteSequence, startTimeOffset: number = 0) => {
+      if (!isLoaded || !samplerRef.current) return;
+
+      // Garantir que o áudio do Tone.js está desbloqueado
+      await Tone.start();
+
+      stop(); // Parar playback anterior
+
+      const sampler = samplerRef.current;
+
+      // Agendar todas as notas da NoteSequence
+      ns.notes?.forEach((note) => {
+        if (note.startTime != null && note.endTime != null && note.pitch != null) {
+          if (note.endTime <= startTimeOffset) return; // Skip finished notes
+
+          const startDelay = Math.max(0, note.startTime - startTimeOffset);
+          const freq = Tone.Frequency(note.pitch, "midi").toNote();
+          const duration = note.endTime - Math.max(note.startTime, startTimeOffset);
+          
+          Tone.Transport.schedule((time) => {
+            sampler.triggerAttackRelease(
+              freq,
+              duration,
+              time,
+              note.instrument === 0 ? 1 : 0.7 // Volume: melodia mais alta que a harmonia
+            );
+          }, `+${startDelay}`);
+        }
+      });
+      
+      Tone.Transport.start();
+    },
+    [isLoaded, stop]
+  );
+
+  return { isLoaded, playSequence, stop };
+}
