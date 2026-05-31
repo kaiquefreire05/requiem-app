@@ -56,11 +56,11 @@ export function useStringEngine(): UseStringEngineReturn {
   }, []);
 
   const stop = useCallback(() => {
+    Tone.Transport.stop();
+    Tone.Transport.cancel(); // Limpa a fila de eventos agendados
     if (samplerRef.current) {
       samplerRef.current.releaseAll();
     }
-    Tone.Transport.stop();
-    Tone.Transport.cancel(); // Limpa a fila de eventos agendados
   }, []);
 
   const playSequence = useCallback(
@@ -73,7 +73,6 @@ export function useStringEngine(): UseStringEngineReturn {
       stop(); // Parar playback anterior
 
       const sampler = samplerRef.current;
-      const now = Tone.now() + 0.1; // Adicionar pequeno buffer temporal
 
       // Agendar todas as notas da NoteSequence
       ns.notes?.forEach((note) => {
@@ -84,14 +83,18 @@ export function useStringEngine(): UseStringEngineReturn {
           const freq = Tone.Frequency(note.pitch, "midi").toNote();
           const duration = note.endTime - Math.max(note.startTime, startTimeOffset);
           
-          sampler.triggerAttackRelease(
-            freq,
-            duration,
-            now + startDelay,
-            note.instrument === 0 ? 1 : 0.7 // Volume: melodia mais alta que a harmonia
-          );
+          Tone.Transport.schedule((time) => {
+            sampler.triggerAttackRelease(
+              freq,
+              duration,
+              time,
+              note.instrument === 0 ? 1 : 0.7 // Volume: melodia mais alta que a harmonia
+            );
+          }, `+${startDelay}`);
         }
       });
+      
+      Tone.Transport.start();
     },
     [isLoaded, stop]
   );

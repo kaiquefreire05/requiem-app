@@ -4,27 +4,29 @@ import {
   NoteSequence,
 } from "@magenta/music";
 import type { INoteSequence } from "@magenta/music";
-import { useMetronome } from "./hooks/useMetronome";
 import { usePitchDetector } from "./hooks/usePitchDetector";
 import { useStringEngine } from "./hooks/useStringEngine";
 import type { DetectedNote } from "./hooks/usePitchDetector";
 import { Sidebar } from "./components/Sidebar";
 import { RecordControls } from "./components/RecordControls";
 import { DynamicRing } from "./components/DynamicRing";
+
 import { StudioView } from "./components/StudioView";
 import type { AppTab } from "./components/BottomNav";
-import { generateProgression, HARMONY_GRAPH } from "./engine/HarmonyEngine";
+import { generateProgression } from "./engine/HarmonyEngine";
 import {
   normalizeNotes,
   transposeProgression,
+  normalizeProgressionToC,
+  getChordPitchClasses
 } from "./engine/TonalityAdapter";
+import { detectKey, estimateBPM } from "./engine/AudioAnalyzer";
 
 // ─────────────────────────────────────────────────────────
 //  Máquina de Estados do fluxo principal
 // ─────────────────────────────────────────────────────────
 export type AppState =
   | "IDLE"
-  | "COUNT_IN"
   | "RECORDING"
   | "REVIEW_RECORDING"
   | "PROCESSING";
@@ -35,19 +37,20 @@ export interface ChordSegment {
   durationBeats: number;
 }
 
-// ── Interface para armazenar blocos de composição ──
 export interface CompositionBlock {
   id: string;
   name: string;
   notes: DetectedNote[];
   progression: ChordSegment[];
   noteSequence?: INoteSequence;
+  key: string;
+  bpm: number;
+  timeSignature: string;
 }
 
 // ── Stale-closure-safe label map ────────────────────────
 const STATE_LABELS: Record<AppState, string> = {
   IDLE: "Iniciar Captura",
-  COUNT_IN: "Contagem...",
   RECORDING: "Gravando · Clique para parar",
   REVIEW_RECORDING: "Analisar áudio gravado?",
   PROCESSING: "Transcrevendo áudio e gerando harmonia...",
@@ -189,11 +192,7 @@ function progressionToNoteSequence(
 
   // 2) Para cada segmento de acorde, adicionar as notas correspondentes
   for (const seg of progression) {
-    const chordNode = HARMONY_GRAPH[seg.chord];
-    if (!chordNode) {
-      currentStartTime += seg.durationBeats * secondsPerBeat;
-      continue;
-    }
+    const pitchClasses = getChordPitchClasses(seg.chord);
 
     const durationSeconds = seg.durationBeats * secondsPerBeat;
     const measureStartTime = currentStartTime;
@@ -204,7 +203,7 @@ function progressionToNoteSequence(
     const qEnd = Math.max(qStart + 1, qStart + stepsPerChord);
 
     // Distribuir pitch classes na oitava C3 (MIDI 48+)
-    for (const pc of chordNode.notes) {
+    for (const pc of pitchClasses) {
       const midiPitch = 48 + pc; // C3 base
       ns.notes!.push(
         NoteSequence.Note.create({
@@ -243,11 +242,13 @@ export default function App() {
   const [qtValue, setQtValue] = useState(4);
   const [utValue, setUtValue] = useState(4);
   const [tonality, setTonality] = useState("C");
-  const timeSignature = `${qtValue}/${utValue}`;
+
   const [appState, setAppState] = useState<AppState>("IDLE");
+  const [preRecordTimeSignature, setPreRecordTimeSignature] = useState({ numerator: 4, denominator: 4 });
+  const [preRecordBpm, setPreRecordBpm] = useState<number | "AUTO">("AUTO");
   
   const [blocks, setBlocks] = useState<CompositionBlock[]>([
-    { id: "1", name: "Verso 1", notes: [], progression: [] }
+    { id: "1", name: "Verso 1", notes: [], progression: [], key: "C", bpm: 120, timeSignature: "4/4" }
   ]);
   const [activeBlockId, setActiveBlockId] = useState<string>("1");
   const activeBlock = blocks.find(b => b.id === activeBlockId);
@@ -267,23 +268,23 @@ export default function App() {
   }, [appState]);
 
   // ── Hooks personalizados ──────────────────────────────
-  const metronome = useMetronome({ bpm, timeSignature });
   const pitchDetector = usePitchDetector();
   const stringEngine = useStringEngine();
 
-  // ── Reagir ao isReady do metrônomo (count-in → recording) ─
+  // ── Sincronizar Bloco Ativo com Global State ───────────
   useEffect(() => {
-    if (metronome.isReady && appStateRef.current === "COUNT_IN") {
-      setAppState("RECORDING");
-      pitchDetector.startRecording();
+    if (activeBlock) {
+      setBpm(activeBlock.bpm);
+      setTonality(activeBlock.key);
+      const [qt, ut] = activeBlock.timeSignature.split('/');
+      setQtValue(parseInt(qt) || 4);
+      setUtValue(parseInt(ut) || 4);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [metronome.isReady]);
+  }, [activeBlockId]);
 
   // ── Cleanup ao desmontar ──────────────────────────────
   useEffect(() => {
     return () => {
-      metronome.stop();
       if (pitchDetector.isListening) pitchDetector.stopListening();
       stringEngine.stop();
     };
@@ -327,18 +328,16 @@ export default function App() {
   // ── Ring Click (Cancelar ou Iniciar) ──────────────────
   const handleRingClick = useCallback(async () => {
     if (appState === "RECORDING") {
-      metronome.stop();
       await pitchDetector.pauseListening();
       setAppState("REVIEW_RECORDING");
-    } else if (appState === "COUNT_IN" || appState === "PROCESSING" || appState === "REVIEW_RECORDING") {
-      metronome.stop();
+    } else if (appState === "PROCESSING" || appState === "REVIEW_RECORDING") {
       pitchDetector.cancelListening();
       setAppState("IDLE");
     } else if (appState === "IDLE") {
       // Iniciar pelo anel também é válido
       // Mas para manter as regras de UI, usaremos o handleMainButtonClick
     }
-  }, [appState, metronome, pitchDetector]);
+  }, [appState, pitchDetector]);
 
   // ── Handler principal do botão ────────────────────────
   const handleMainButtonClick = useCallback(async () => {
@@ -346,11 +345,11 @@ export default function App() {
     setErrorMsg(null);
 
     switch (current) {
-      // ── IDLE → COUNT_IN ───────────────────────────────
+      // ── IDLE → RECORDING ───────────────────────────────
       case "IDLE": {
-        setAppState("COUNT_IN");
-        await pitchDetector.prepareListening(); // Prepara mic (pede permissão) ANTES de iniciar contagem
-        await metronome.start();
+        setAppState("RECORDING");
+        await pitchDetector.prepareListening(); // Prepara mic (pede permissão)
+        pitchDetector.startRecording(); // Inicia imediatamente
         break;
       }
 
@@ -384,34 +383,52 @@ export default function App() {
         }
 
         try {
-          // 3) Pré-processar notas
-          const gluedNotes = glueNotes(detectedNotes);
-          recordedBpmRef.current = bpm;
-
-          console.log(`[Pipeline] Notas brutas: ${detectedNotes.length} → Após glue: ${gluedNotes.length}`);
+          // 3) Pré-processar notas e remover o silêncio inicial (trim)
+          let gluedNotes = glueNotes(detectedNotes);
+          
           if (gluedNotes.length > 0) {
             const tMin = Math.min(...gluedNotes.map(n => n.startTime));
+            gluedNotes = gluedNotes.map(n => ({
+              ...n,
+              startTime: n.startTime - tMin,
+              endTime: n.endTime - tMin,
+            }));
             const tMax = Math.max(...gluedNotes.map(n => n.endTime));
-            console.log(`[Pipeline] Range temporal: ${tMin.toFixed(3)}s → ${tMax.toFixed(3)}s (${(tMax - tMin).toFixed(3)}s)`);
+            console.log(`[Pipeline] Range temporal ajustado (sem folga inicial): 0.000s → ${tMax.toFixed(3)}s`);
           }
 
-          // 4) Normalizar notas para C Major (Local Space)
-          const normalizedNotes = normalizeNotes(gluedNotes, tonality);
+          // 4) Analisar Key e BPM
+          const detectedKey = detectKey(gluedNotes);
+          const estimatedBpm = preRecordBpm === "AUTO" ? estimateBPM(gluedNotes) : preRecordBpm;
+          const defaultTimeSignature = `${preRecordTimeSignature.numerator}/${preRecordTimeSignature.denominator}`;
 
-          // 5) Gerar progressão via HarmonyEngine (opera em C Major)
+          // Sincronizar o state atual da view com os detectados
+          setBpm(estimatedBpm);
+          setTonality(detectedKey);
+          setQtValue(preRecordTimeSignature.numerator);
+          setUtValue(preRecordTimeSignature.denominator);
+          recordedBpmRef.current = estimatedBpm;
+
+          console.log(`[Pipeline] Notas brutas: ${detectedNotes.length} → Após glue: ${gluedNotes.length}`);
+          console.log(`[Pipeline] Key detectada: ${detectedKey} | BPM estimado: ${estimatedBpm}`);
+
+          // 5) Normalizar notas para C Major (Local Space) usando a tonalidade detectada
+          const normalizedNotes = normalizeNotes(gluedNotes, detectedKey);
+
+          // 6) Gerar progressão via HarmonyEngine (opera em C Major)
           const rawProgression = generateProgression(
             normalizedNotes,
-            bpm,
-            qtValue, // 1 acorde por compasso (duration = qtValue)
-            qtValue,
-            utValue,
+            estimatedBpm,
+            preRecordTimeSignature.numerator, // 1 acorde por compasso (duration = numerator)
+            preRecordTimeSignature.numerator,
+            preRecordTimeSignature.denominator,
             "C",
           );
 
           console.log(`[Pipeline] Progressão bruta (C): [${rawProgression.join(", ")}]`);
 
-          // 6) Transpor progressão de volta para a tonalidade do usuário
-          const progressionString = transposeProgression(rawProgression, tonality);
+          // 7) Transpor progressão de volta para a tonalidade detectada
+          const progressionString = transposeProgression(rawProgression, detectedKey);
           
           const progression: ChordSegment[] = progressionString.map(chord => ({
             id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
@@ -421,18 +438,26 @@ export default function App() {
 
           console.log(`[Pipeline] Progressão final (${tonality}): [${progressionString.join(", ")}]`);
 
-          // 7) Sintetizar em NoteSequence (melodia + acordes)
+          // 8) Sintetizar em NoteSequence (melodia + acordes)
           const noteSequence = progressionToNoteSequence(
             progression,
             gluedNotes,
-            bpm,
-            utValue,
+            estimatedBpm,
+            preRecordTimeSignature.denominator,
           );
 
-          // 8) Adicionar resultado
+          // 9) Adicionar resultado
           setBlocks(prev => prev.map(b => 
             b.id === activeBlockId 
-              ? { ...b, notes: gluedNotes, progression, noteSequence } 
+              ? { 
+                  ...b, 
+                  notes: gluedNotes, 
+                  progression, 
+                  noteSequence, 
+                  key: detectedKey, 
+                  bpm: estimatedBpm, 
+                  timeSignature: defaultTimeSignature 
+                } 
               : b
           ));
           setAppState("IDLE");
@@ -447,7 +472,7 @@ export default function App() {
   };
 
   const handleStopAndProcess = async () => {
-    metronome.stop();
+
     await pitchDetector.pauseListening();
     await processRecording();
   };
@@ -521,7 +546,7 @@ export default function App() {
   const isActive = appState !== "IDLE";
   const isRecording = appState === "RECORDING";
   const isProcessing = appState === "PROCESSING";
-  const isButtonDisabled = appState === "COUNT_IN" || isProcessing || !stringEngine.isLoaded;
+  const isButtonDisabled = isProcessing || !stringEngine.isLoaded;
 
   const recentMelodies = [
     "Invenção a 2 Vozes - Dó Maior",
@@ -553,18 +578,21 @@ export default function App() {
       id,
       name: `Seção ${blocks.length + 1}`,
       notes: [],
-      progression: []
+      progression: [],
+      key: "C",
+      bpm: 120,
+      timeSignature: `${preRecordTimeSignature.numerator}/${preRecordTimeSignature.denominator}`
     };
     setBlocks(prev => [...prev, newBlock]);
     setActiveBlockId(id);
     
     // Inicia gravação In-Place
     if (appStateRef.current === "IDLE") {
-      setAppState("COUNT_IN");
+      setAppState("RECORDING");
       await pitchDetector.prepareListening();
-      await metronome.start();
+      pitchDetector.startRecording();
     }
-  }, [blocks.length, pitchDetector, metronome]);
+  }, [blocks.length, pitchDetector]);
 
   const handleRemoveBlock = useCallback((idToRemove: string) => {
     setBlocks(prev => {
@@ -573,13 +601,55 @@ export default function App() {
       if (idToRemove === activeBlockId && next.length > 0) {
         setActiveBlockId(next[0].id);
       }
-      return next.length > 0 ? next : [{ id: Date.now().toString(), name: "Seção 1", notes: [], progression: [] }];
+      return next.length > 0 ? next : [{ id: Date.now().toString(), name: "Seção 1", notes: [], progression: [], key: "C", bpm: 120, timeSignature: `${preRecordTimeSignature.numerator}/${preRecordTimeSignature.denominator}` }];
     });
-  }, [activeBlockId]);
+  }, [activeBlockId, preRecordTimeSignature]);
 
   const handleRenameBlock = useCallback((id: string, newName: string) => {
     setBlocks(prev => prev.map(b => b.id === id ? { ...b, name: newName } : b));
   }, []);
+
+  // Setters que também atualizam o bloco atual
+  const handleSetBpm = useCallback((newBpm: number) => {
+    setBpm(newBpm);
+    setBlocks(prev => prev.map(b => b.id === activeBlockId ? { ...b, bpm: newBpm } : b));
+  }, [activeBlockId]);
+
+  const handleSetQtValue = useCallback((newQt: number) => {
+    setQtValue(newQt);
+    setBlocks(prev => prev.map(b => b.id === activeBlockId ? { ...b, timeSignature: `${newQt}/${b.timeSignature.split('/')[1] || 4}` } : b));
+  }, [activeBlockId]);
+
+  const handleSetUtValue = useCallback((newUt: number) => {
+    setUtValue(newUt);
+    setBlocks(prev => prev.map(b => b.id === activeBlockId ? { ...b, timeSignature: `${b.timeSignature.split('/')[0] || 4}/${newUt}` } : b));
+  }, [activeBlockId]);
+
+  const handleSetTonality = useCallback((newKey: string) => {
+    setTonality(newKey);
+    setBlocks(prev => prev.map(b => {
+      if (b.id !== activeBlockId) return b;
+      
+      try {
+        const cProgression = normalizeProgressionToC(b.progression.map(p => p.chord), b.key);
+        const newProgressionStr = transposeProgression(cProgression, newKey);
+        const newProgression = b.progression.map((p, i) => ({ ...p, chord: newProgressionStr[i] }));
+        
+        const [, ut] = b.timeSignature.split('/');
+        const noteSequence = progressionToNoteSequence(
+          newProgression,
+          b.notes,
+          b.bpm,
+          parseInt(ut) || 4
+        );
+        
+        return { ...b, key: newKey, progression: newProgression, noteSequence };
+      } catch (err) {
+        console.error("Erro ao transpor tonalidade:", err);
+        return { ...b, key: newKey }; // Fallback
+      }
+    }));
+  }, [activeBlockId]);
 
   return (
     <div className="flex h-screen w-full bg-black text-white overflow-hidden font-sans antialiased">
@@ -599,12 +669,14 @@ export default function App() {
           <div className="relative z-10 flex flex-col flex-1 items-center justify-center text-center overflow-hidden">
             <div className="w-full max-w-4xl px-4 flex flex-col items-center transition-all duration-500 ease-in-out">
 
-              <DynamicRing 
-                isActive={isActive} 
-                currentFrequency={pitchDetector.currentFrequency}
-                currentNote={pitchDetector.currentNote}
-                onClick={handleRingClick}
-              />
+              <div className="relative flex items-center justify-center">
+                <DynamicRing 
+                  isActive={isActive} 
+                  currentFrequency={pitchDetector.currentFrequency}
+                  currentNote={pitchDetector.currentNote}
+                  onClick={handleRingClick}
+                />
+              </div>
 
               <div className={`w-full flex flex-col items-center transition-all duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isActive ? 'opacity-0 h-0 scale-90 pointer-events-none' : 'opacity-100 h-auto scale-100'}`}>
                 <h1 className="text-3xl sm:text-4xl font-normal tracking-tight text-white/90 mb-10 drop-shadow-md">
@@ -612,26 +684,19 @@ export default function App() {
                 </h1>
 
                 <RecordControls
-                  isActive={false} // It is hidden when active, so it never shows disabled states
-
-                tonality={tonality}
-                setTonality={setTonality}
-                qtValue={qtValue}
-                setQtValue={setQtValue}
-                utValue={utValue}
-                setUtValue={setUtValue}
-                bpm={bpm}
-                setBpm={setBpm}
-                appState={appState}
-                isRecording={isRecording}
-                isProcessing={isProcessing}
-                currentBeat={metronome.currentBeat}
-                currentFrequency={pitchDetector.currentFrequency}
-                currentNote={pitchDetector.currentNote}
-                isButtonDisabled={isButtonDisabled}
-                handleMainButtonClick={handleMainButtonClick}
-                stateLabels={STATE_LABELS}
-              />
+                  appState={appState}
+                  isRecording={isRecording}
+                  isProcessing={isProcessing}
+                  currentFrequency={pitchDetector.currentFrequency}
+                  currentNote={pitchDetector.currentNote}
+                  isButtonDisabled={isButtonDisabled}
+                  handleMainButtonClick={handleMainButtonClick}
+                  stateLabels={STATE_LABELS}
+                  preRecordTimeSignature={preRecordTimeSignature}
+                  setPreRecordTimeSignature={setPreRecordTimeSignature}
+                  preRecordBpm={preRecordBpm}
+                  setPreRecordBpm={setPreRecordBpm}
+                />
             </div>
             
             {appState === "REVIEW_RECORDING" && (
@@ -688,11 +753,13 @@ export default function App() {
             noteSequence={activeBlock.noteSequence!}
             progression={activeBlock.progression}
             bpm={bpm}
-            setBpm={setBpm}
+            setBpm={handleSetBpm}
             qtValue={qtValue}
-            setQtValue={setQtValue}
+            setQtValue={handleSetQtValue}
             utValue={utValue}
-            setUtValue={setUtValue}
+            setUtValue={handleSetUtValue}
+            tonality={tonality}
+            setTonality={handleSetTonality}
             isPlaying={playingIndex === 0}
             onPlay={(timeOffset) => {
               if (activeBlock.noteSequence) playSequence(0, activeBlock.noteSequence, timeOffset);

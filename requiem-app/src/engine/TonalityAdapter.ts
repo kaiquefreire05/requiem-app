@@ -266,6 +266,28 @@ export const normalizeProgressionToC = (
   });
 };
 
+/**
+ * Retorna as pitch classes reais (0-11) para qualquer acorde válido (ex: "A#", "Cm7").
+ * Usado pelo sintetizador para reproduzir acordes de qualquer tonalidade,
+ * já que o HARMONY_GRAPH armazena apenas os acordes relativos a Dó Maior.
+ */
+export const getChordPitchClasses = (chordName: string): number[] => {
+  const parsed = parseChord(chordName);
+  if (!parsed) return [0, 4, 7]; // Fallback genérico para Major (C)
+
+  const rootIndex = ROOT_OFFSETS[parsed.root] ?? 0;
+  let intervals = [0, 4, 7]; // Major padrão
+
+  // O sufixo determina os intervalos a partir da fundamental
+  if (parsed.suffix.startsWith("dim")) intervals = [0, 3, 6];
+  else if (parsed.suffix.startsWith("m7")) intervals = [0, 3, 7, 10];
+  else if (parsed.suffix.startsWith("maj7")) intervals = [0, 4, 7, 11];
+  else if (parsed.suffix.startsWith("m")) intervals = [0, 3, 7];
+  else if (parsed.suffix.startsWith("7")) intervals = [0, 4, 7, 10];
+  
+  return intervals.map(interval => (rootIndex + interval) % 12);
+};
+
 // ─────────────────────────────────────────────────────────
 //  6. Catálogo de Tonalidades para a UI
 // ─────────────────────────────────────────────────────────

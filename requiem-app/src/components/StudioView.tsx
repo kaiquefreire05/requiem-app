@@ -18,6 +18,7 @@ import {
 import { PianoRoll } from "./PianoRoll";
 import { ChordRoll } from "./ChordRoll";
 import { HARMONY_GRAPH, transitionMatrix } from "../engine/HarmonyEngine";
+import { ALL_TONALITIES } from "../engine/TonalityAdapter";
 
 // ─────────────────────────────────────────────────────────
 //  Constantes do Piano Roll
@@ -48,6 +49,8 @@ interface StudioViewProps {
   setQtValue: (v: number) => void;
   utValue: number;
   setUtValue: (v: number) => void;
+  tonality: string;
+  setTonality: (v: string) => void;
   isPlaying: boolean;
   onPlay: (time?: number) => void;
   onStop: () => void;
@@ -107,6 +110,8 @@ export function StudioView({
   isPlaying,
   onPlay,
   onStop,
+  tonality,
+  setTonality,
   onUpdateProgression,
   onRecordAgain,
 }: StudioViewProps) {
@@ -341,6 +346,16 @@ export function StudioView({
             <select value={qtValue} onChange={(e) => setQtValue(Number(e.target.value))} className="bg-transparent focus:outline-none appearance-none cursor-pointer"><option value={4}>4</option><option value={3}>3</option></select>
             <span className="text-white/30">/</span>
             <select value={utValue} onChange={(e) => setUtValue(Number(e.target.value))} className="bg-transparent focus:outline-none appearance-none cursor-pointer"><option value={4}>4</option><option value={8}>8</option></select>
+          </div>
+
+          <div className="w-px h-6 bg-white/10 mx-3" />
+
+          {/* Tonality */}
+          <div className="flex items-center gap-2">
+            <span className="text-white/40 text-[10px] uppercase tracking-widest font-mono">TOM</span>
+            <select value={tonality} onChange={(e) => setTonality(e.target.value)} className="bg-transparent focus:outline-none appearance-none cursor-pointer text-sm font-mono text-white">
+              {ALL_TONALITIES.map(t => <option key={t.value} value={t.value} className="bg-zinc-900">{t.value}</option>)}
+            </select>
           </div>
           
           <div className="flex-1" />
