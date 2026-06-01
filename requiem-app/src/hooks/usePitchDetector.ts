@@ -26,6 +26,8 @@ export interface DetectedNote {
   startTime: number;
   /** Tempo de fim da nota em segundos */
   endTime: number;
+  /** Amplitude da nota (velocidade/intensidade) */
+  amplitude: number;
 }
 
 export interface UsePitchDetectorReturn {
@@ -415,6 +417,9 @@ export function usePitchDetector(): UsePitchDetectorReturn {
         basicPitchRef.current = new BasicPitch(MODEL_URL);
       }
 
+      // Yield para a UI atualizar logs antes da inferência
+      await new Promise(resolve => setTimeout(resolve, 50));
+
       // ── 4. Inferência ─────────────────────────────────
       let frames: number[][] = [];
       let onsets: number[][] = [];
@@ -436,6 +441,9 @@ export function usePitchDetector(): UsePitchDetectorReturn {
       );
       console.log(`[BasicPitch] Frames: ${frames.length}`);
 
+      // Yield para garantir que a UI respire antes da conversão final
+      await new Promise(resolve => setTimeout(resolve, 50));
+
       // ── 5. Converter → DetectedNote[] ─────────────────
       const noteEvents = outputToNotesPoly(frames, onsets, 0.5, 0.3, 11, true, null, null, true, 11);
       const notesTime = noteFramesToTime(noteEvents);
@@ -444,6 +452,7 @@ export function usePitchDetector(): UsePitchDetectorReturn {
         pitch: note.pitchMidi,
         startTime: note.startTimeSeconds,
         endTime: note.startTimeSeconds + note.durationSeconds,
+        amplitude: note.amplitude || 0.7,
       }));
 
       // Log detalhado de cada nota

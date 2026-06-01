@@ -19,7 +19,7 @@
 // ─────────────────────────────────────────────────────────
 
 import type { DetectedNote } from "../hooks/usePitchDetector";
-import { normalizeProgressionToC } from "./TonalityAdapter";
+import { chordToRoman } from "./TonalityAdapter";
 
 // ─────────────────────────────────────────────────────────
 //  1. Tipos e Interfaces
@@ -126,6 +126,13 @@ export const HARMONY_GRAPH: Readonly<Record<string, ChordNode>> = {
   Cdim:   { notes: [0, 3, 6],   allowedTransitions: ["Db", "Bbm", "Ab7", "Fm"] },
   Fdim:   { notes: [5, 8, 11],  allowedTransitions: ["Gb", "Ebm", "Db7", "Bbm"] },
 
+  // ── Aliases Enharmônicos ──────────────────────────────
+  "C#": { notes: [1, 5, 8], allowedTransitions: ["Db", "Ab", "Gb", "Bbm", "Fm", "Ab7", "Db7"] },
+  Gb: { notes: [6, 10, 1],  allowedTransitions: ["F#", "B", "C#", "D#m", "G#m", "F#7", "C#7"] },
+  "G#": { notes: [8, 0, 3], allowedTransitions: ["Ab", "Eb", "Db", "Fm", "Cm", "Bbm", "Eb7", "Ab7"] },
+  "D#": { notes: [3, 7, 10], allowedTransitions: ["Eb", "Bb", "Ab", "Cm", "Gm", "Fm", "Bb7", "Eb7", "G7"] },
+  Ebm: { notes: [3, 6, 10], allowedTransitions: ["D#m", "F#", "G#m", "B", "D#7", "A#7"] },
+
 } as const;
 
 // ─────────────────────────────────────────────────────────
@@ -146,26 +153,24 @@ const dataModules = import.meta.glob<ProgressionData>(
 /**
  * Extrai todas as progressões dos módulos carregados pelo Vite,
  * normalizando cada uma para Dó Maior usando sua `originalTonality`.
- *
- * Isso garante que a Cadeia de Markov aprenda padrões harmônicos
- * relativos (I-V-vi-IV) e não padrões absolutos presos a uma key.
- *
- * Ex: Canon in D ["D","A","Bm","F#m",...] → ["C","G","Am","Em",...]
+ * Em seguida, realiza Data Augmentation transpondo a progressão base
+ * para todas as 14 tonalidades maiores, ensinando a Cadeia de Markov
+ * a reconhecer padrões em qualquer tom (ex: G#m).
  */
 const extractDataset = (
   modules: Record<string, ProgressionData>,
-): readonly (readonly string[])[] =>
-  Object.values(modules)
+): readonly (readonly string[])[] => {
+  const baseProgressions = Object.values(modules)
     .filter((mod): mod is ProgressionData =>
       Array.isArray(mod?.normalizedProgression) &&
       typeof mod?.originalTonality === "string",
     )
     .map(mod =>
-      normalizeProgressionToC(
-        mod.normalizedProgression,
-        mod.originalTonality,
-      ),
+      mod.normalizedProgression.map(chord => chordToRoman(chord, mod.originalTonality))
     );
+
+  return baseProgressions;
+};
 
 // ─────────────────────────────────────────────────────────
 //  4. Cadeia de Markov (Modelo de Aprendizado)
@@ -191,27 +196,51 @@ export const buildMarkovMatrix = (
 ): TransitionMatrix => {
   // ── Fase 1: Contagem bruta de transições ──────────────
   const counts: Record<string, Record<string, number>> = {};
+  
+  // Coletar todos os graus possíveis conhecidos no sistema a partir do HARMONY_GRAPH
+  const allDegrees = new Set<string>();
+  Object.keys(HARMONY_GRAPH).forEach(chord => {
+    allDegrees.add(chordToRoman(chord, "C"));
+  });
 
   for (const progression of dataset) {
     for (let i = 0; i < progression.length - 1; i++) {
-      const from = progression[i];
+      const from1 = progression[i];
       const to = progression[i + 1];
 
-      if (!counts[from]) counts[from] = {};
-      counts[from][to] = (counts[from][to] ?? 0) + 1;
+      // 1ª Ordem
+      if (!counts[from1]) counts[from1] = {};
+      counts[from1][to] = (counts[from1][to] ?? 0) + 1;
+
+      // 2ª Ordem
+      if (i >= 1) {
+        const from2 = progression[i - 1];
+        const state2 = `${from2},${from1}`;
+        if (!counts[state2]) counts[state2] = {};
+        counts[state2][to] = (counts[state2][to] ?? 0) + 1;
+      }
     }
   }
 
-  // ── Fase 2: Normalização → probabilidades [0.0, 1.0] ─
+  // ── Fase 2: Laplace Smoothing e Normalização ──────────
+  const ALPHA = 0.1;
   const matrix: Record<string, Record<string, number>> = {};
+  const degreesArray = Array.from(allDegrees);
 
-  for (const [from, destinations] of Object.entries(counts)) {
-    const totalOutgoing = Object.values(destinations)
-      .reduce((sum, count) => sum + count, 0);
+  for (const [state, destinations] of Object.entries(counts)) {
+    matrix[state] = {};
+    let totalOutgoing = 0;
+    
+    // Adiciona ALPHA a todos os graus possíveis
+    for (const degree of degreesArray) {
+      const count = (destinations[degree] ?? 0) + ALPHA;
+      matrix[state][degree] = count;
+      totalOutgoing += count;
+    }
 
-    matrix[from] = {};
-    for (const [to, count] of Object.entries(destinations)) {
-      matrix[from][to] = count / totalOutgoing;
+    // Normaliza para que a soma seja rigorosamente 1.0
+    for (const degree of degreesArray) {
+      matrix[state][degree] /= totalOutgoing;
     }
   }
 
@@ -245,6 +274,23 @@ const WEIGHT_ROOT_BONUS = 1.5;
 /** Penalidade multiplicador quando a nota NÃO pertence ao acorde. */
 const WEIGHT_OUT_PENALTY = 0.5;
 
+// -- NOVOS PESOS DE CALIBRAÇÃO (Analisador de Contorno e Textura) --
+const WEIGHT_STRONG_BEAT = 3.0;
+const WEIGHT_WEAK_BEAT = 0.5;
+const BEAT_MARGIN_SEC = 0.15;
+
+const REGISTER_LOW_THRESHOLD = 48; // C3
+const REGISTER_HIGH_THRESHOLD = 72; // C5
+const REGISTER_PENALTY = 0.2;
+const REGISTER_BONUS = 1.5;
+
+const DENSITY_THRESHOLD = 8;
+const ORNAMENT_PENALTY_MULTIPLIER = 0.2; // Diminui WEIGHT_OUT_PENALTY
+
+const LEAP_THRESHOLD = 7;
+const TENSION_BONUS = 1.5;
+// ------------------------------------------------------------------
+
 /**
  * Peso multiplicador da probabilidade Markov no score final.
  *
@@ -257,12 +303,8 @@ const WEIGHT_OUT_PENALTY = 0.5;
  */
 const WEIGHT_MARKOV = 15.0;
 
-/**
- * Probabilidade baseline para transições permitidas pelo grafo
- * mas nunca observadas no dataset. Evita que acordes válidos
- * recebam score zero por falta de dados estilísticos.
- */
-const MARKOV_FALLBACK = 0.05;
+/** Limiar de probabilidade Markov para permitir empréstimo modal fora do Grafo */
+const THRESHOLD_MODAL_INTERCHANGE = 0.15;
 
 // ─────────────────────────────────────────────────────────
 //  7. Funções Utilitárias (puras)
@@ -277,38 +319,85 @@ const noteDuration = (note: DetectedNote): number =>
 
 /**
  * Pontua um único acorde candidato APENAS com base nas notas tocadas.
- *
- * Para cada nota tocada:
- * - Se o pitch class pertence ao acorde → +duration × WEIGHT_IN_CHORD
- * - Se é a tônica (1º elemento)        → +duration × WEIGHT_ROOT_BONUS  (bônus cumulativo)
- * - Se não pertence ao acorde          → −duration × WEIGHT_OUT_PENALTY
+ * Incorpora análise de textura e métrica.
  */
 const computeNoteScore = (
+  candidateName: string,
   candidateNotes: readonly number[],
   playedNotes: readonly DetectedNote[],
-): number =>
-  playedNotes.reduce((score, note) => {
+  windowStart: number,
+  secondsPerBeat: number,
+  isHighDensity: boolean,
+  avgPitch: number,
+  avgAmplitude: number,
+): number => {
+  // Sensor 2: Registro (Grave vs. Agudo)
+  const isComplex = candidateNotes.length > 3 || candidateName.includes('dim') || candidateName.includes('7');
+  
+  let registerMultiplier = 1.0;
+  if (avgPitch > 0) {
+    if (avgPitch < REGISTER_LOW_THRESHOLD && isComplex) {
+      registerMultiplier = REGISTER_PENALTY; // Lama acústica
+    } else if (avgPitch > REGISTER_HIGH_THRESHOLD && isComplex) {
+      registerMultiplier = REGISTER_BONUS;   // Registro agudo
+    }
+  }
+
+  // Sensor 3: Densidade Rítmica
+  const currentOutPenalty = isHighDensity 
+    ? WEIGHT_OUT_PENALTY * ORNAMENT_PENALTY_MULTIPLIER 
+    : WEIGHT_OUT_PENALTY;
+
+  const rawScore = playedNotes.reduce((score, note) => {
     const pc = toPitchClass(note.pitch);
     const duration = noteDuration(note);
     const isInChord = candidateNotes.includes(pc);
     const isRoot = pc === candidateNotes[0];
 
-    if (!isInChord) return score - duration * WEIGHT_OUT_PENALTY;
+    // Sensor 1: Posição Métrica (O Peso do Tempo Forte)
+    const offsetFromStart = note.startTime - windowStart;
+    const closestBeatOffset = Math.round(offsetFromStart / secondsPerBeat) * secondsPerBeat;
+    const isStrongBeat = Math.abs(offsetFromStart - closestBeatOffset) <= BEAT_MARGIN_SEC;
+    
+    const beatMultiplier = isStrongBeat ? WEIGHT_STRONG_BEAT : WEIGHT_WEAK_BEAT;
 
-    const base = score + duration * WEIGHT_IN_CHORD;
-    return isRoot ? base + duration * WEIGHT_ROOT_BONUS : base;
+    if (!isInChord) return score - (duration * currentOutPenalty * beatMultiplier);
+
+    const base = score + (duration * WEIGHT_IN_CHORD * beatMultiplier);
+    return isRoot ? base + (duration * WEIGHT_ROOT_BONUS * beatMultiplier) : base;
   }, 0);
 
+  let finalRawScore = rawScore * registerMultiplier;
+
+  // Sensor 5: Dinâmica (Velocity/Amplitude)
+  const candidateRoman = chordToRoman(candidateName, "C");
+  if (avgAmplitude < 0.4) {
+    if (["I", "i", "IV", "iv", "vi", "VI"].includes(candidateRoman)) finalRawScore += 0.15;
+  } else if (avgAmplitude > 0.7) {
+    if (["V", "v", "vii°", "VII", "III", "iii"].includes(candidateRoman)) finalRawScore += 0.15;
+  }
+
+  return finalRawScore;
+};
+
 /**
- * Busca a probabilidade estilística de uma transição na
- * Matriz de Markov, usando MARKOV_FALLBACK se a transição
- * nunca foi observada no dataset.
+ * Busca a probabilidade estilística de uma transição na Matriz de Markov.
+ * Tenta usar o histórico de 2ª ordem primeiro, com fallback para 1ª ordem.
  */
 const lookupStyleProbability = (
   matrix: TransitionMatrix,
-  from: string,
-  to: string,
-): number => matrix[from]?.[to] ?? MARKOV_FALLBACK;
+  state1: string,
+  state2: string | null,
+  targetRoman: string,
+): number => {
+  if (state2 && matrix[state2]?.[targetRoman] !== undefined) {
+    return matrix[state2][targetRoman];
+  }
+  if (matrix[state1]?.[targetRoman] !== undefined) {
+    return matrix[state1][targetRoman];
+  }
+  return 0; // Laplace garante que será > 0 se o estado existir. 0 apenas se o estado nunca foi visto.
+};
 
 // ─────────────────────────────────────────────────────────
 //  8. Algoritmo Principal — determineNextChord (Híbrido)
@@ -337,23 +426,51 @@ const lookupStyleProbability = (
  * Complexidade: O(T × N) onde T = transições e N = notas detectadas.
  */
 export function determineNextChord(
-  currentChord: string,
+  chordHistory: readonly string[],
   playedNotes: readonly DetectedNote[],
+  windowStart: number,
+  secondsPerBeat: number,
   markovMatrix: TransitionMatrix = transitionMatrix,
-): string {
-  // ── Caso trivial: sem notas → manter acorde atual ─────
-  if (playedNotes.length === 0) return currentChord;
+): { chord: string, velocity: number } {
+  const currentChord = chordHistory.length > 0 ? chordHistory[chordHistory.length - 1] : "C";
 
-  // ── Obter nó do grafo ─────────────────────────────────
+  if (playedNotes.length === 0) return { chord: currentChord, velocity: 0.7 };
+
   const currentNode = HARMONY_GRAPH[currentChord];
-  if (!currentNode) return currentChord;
+  if (!currentNode) return { chord: currentChord, velocity: 0.7 };
 
-  // ── Candidatos = transições permitidas do nó atual ────
-  //    (O Grafo é a LEI — apenas estes são avaliados)
-  const candidates = currentNode.allowedTransitions;
+  // Calcular os estados Markov a partir do histórico (em graus relativos)
+  const romanHistory = chordHistory.map(c => chordToRoman(c, "C"));
+  const currRoman = romanHistory.length > 0 ? romanHistory[romanHistory.length - 1] : "I";
+  const prevRoman = romanHistory.length > 1 ? romanHistory[romanHistory.length - 2] : null;
 
-  // ── Pontuar cada candidato com a fórmula híbrida ──────
-  const { bestChord } = candidates.reduce<{
+  const state1 = currRoman;
+  const state2 = prevRoman ? `${prevRoman},${currRoman}` : null;
+
+  const density = playedNotes.length;
+  const isHighDensity = density > DENSITY_THRESHOLD;
+
+  let sumPitch = 0;
+  let sumAmp = 0;
+  let hasHighTensionLeap = false;
+
+  for (let i = 0; i < density; i++) {
+    sumPitch += playedNotes[i].pitch;
+    sumAmp += (playedNotes[i].amplitude || 0.7);
+    if (i > 0) {
+      const leap = Math.abs(playedNotes[i].pitch - playedNotes[i - 1].pitch);
+      if (leap >= LEAP_THRESHOLD) {
+        hasHighTensionLeap = true;
+      }
+    }
+  }
+  const avgPitch = density > 0 ? sumPitch / density : 0;
+  const avgAmplitude = density > 0 ? Math.max(0.2, sumAmp / density) : 0.7;
+
+  // ── Candidatos: Avaliar TODOS os acordes do grafo para resolver Empréstimo Modal ──
+  const allCandidates = Object.keys(HARMONY_GRAPH);
+
+  const { bestChord } = allCandidates.reduce<{
     bestChord: string;
     bestScore: number;
   }>(
@@ -361,17 +478,31 @@ export function determineNextChord(
       const candidateNode = HARMONY_GRAPH[candidateName];
       if (!candidateNode) return acc;
 
-      // (a) Score baseado nas notas detectadas pelo microfone
-      const noteScore = computeNoteScore(candidateNode.notes, playedNotes);
+      const candidateRoman = chordToRoman(candidateName, "C");
+      let styleProb = lookupStyleProbability(markovMatrix, state1, state2, candidateRoman);
 
-      // (b) Probabilidade estilística da Cadeia de Markov
-      const styleProb = lookupStyleProbability(
-        markovMatrix,
-        currentChord,
+      // Validação de Transição (Grafo vs Dataset)
+      const isAllowedByGraph = currentNode.allowedTransitions.includes(candidateName);
+      const isAllowedByMarkov = styleProb > THRESHOLD_MODAL_INTERCHANGE;
+
+      if (!isAllowedByGraph && !isAllowedByMarkov) return acc;
+
+      const noteScore = computeNoteScore(
         candidateName,
+        candidateNode.notes,
+        playedNotes,
+        windowStart,
+        secondsPerBeat,
+        isHighDensity,
+        avgPitch,
+        avgAmplitude
       );
 
-      // (c) Fórmula híbrida final
+      // Sensor 4: Saltos Intervalares (Leaps)
+      if (hasHighTensionLeap && (candidateName.includes('7') || candidateName.includes('dim'))) {
+        styleProb *= TENSION_BONUS;
+      }
+
       const finalScore = (noteScore * 1.0) + (styleProb * WEIGHT_MARKOV);
 
       return finalScore > acc.bestScore
@@ -381,59 +512,47 @@ export function determineNextChord(
     { bestChord: currentChord, bestScore: -Infinity },
   );
 
-  return bestChord;
+  return { chord: bestChord, velocity: avgAmplitude };
 }
 
 // ─────────────────────────────────────────────────────────
 //  9. Gerador de Progressão Completa
 // ─────────────────────────────────────────────────────────
 
-/**
- * Segmenta as notas detectadas em janelas temporais (compassos)
- * e gera uma progressão de acordes avaliando cada segmento
- * sequencialmente pelo modelo híbrido (Grafo + Markov).
- *
- * @param playedNotes     — Todas as notas detectadas na gravação
- * @param bpm             — Batidas por minuto
- * @param beatsPerMeasure — Numerador da fórmula de compasso (ex: 4 para 4/4)
- * @param startChord      — Acorde inicial da progressão (default: "C")
- * @param markovMatrix    — Matriz de transição (default: singleton pré-calculado)
- * @returns                 Array de nomes de acordes, um por compasso
- */
 export function generateProgression(
   playedNotes: readonly DetectedNote[],
   bpm: number,
-  harmonicRhythmBeats: number,
-  _timeSignatureNumerator: number,
+  _harmonicRhythmBeats: number,
+  timeSignatureNumerator: number,
   timeSignatureDenominator: number,
   startChord: string = "C",
   markovMatrix_: TransitionMatrix = transitionMatrix,
-): readonly string[] {
-  if (playedNotes.length === 0) return [startChord];
+): readonly { chord: string, velocity: number }[] {
+  if (playedNotes.length === 0) return [{ chord: startChord, velocity: 0.7 }];
 
   // ── MUDANÇA: Matemática do Tempo ────────────────────────
   // O BPM na música digital refere-se a semínimas (denominador 4).
   // A duração de 1 "Beat" real do compasso atual depende do denominador.
   const secondsPerBeat = (4 / timeSignatureDenominator) * (60 / bpm);
   
-  // A janela de cada acorde
-  const secondsPerWindow = secondsPerBeat * harmonicRhythmBeats;
+  // Duração total de 1 compasso inteiro
+  const secondsPerMeasure = secondsPerBeat * timeSignatureNumerator;
 
   // ── Determinar o range temporal total ─────────────────
   const totalStart = Math.min(...playedNotes.map(n => n.startTime));
   const totalEnd = Math.max(...playedNotes.map(n => n.endTime));
   const totalDuration = totalEnd - totalStart;
 
-  // ── Número de janelas (mínimo 1) ────────────────────
-  const windowCount = Math.max(1, Math.ceil(totalDuration / secondsPerWindow));
+  // ── Número de janelas (mínimo 1) baseadas em compasso ─
+  const windowCount = Math.max(1, Math.ceil(totalDuration / secondsPerMeasure));
 
   // ── Segmentar notas por janela e avaliar cada um ────
-  const progression: string[] = [];
-  let currentChord = startChord;
+  const progression: { chord: string, velocity: number }[] = [];
+  let history = [startChord];
 
   for (let w = 0; w < windowCount; w++) {
-    const windowStart = totalStart + w * secondsPerWindow;
-    const windowEnd = windowStart + secondsPerWindow;
+    const windowStart = totalStart + w * secondsPerMeasure;
+    const windowEnd = windowStart + secondsPerMeasure;
 
     // Notas que interseccionam esta janela temporal
     const windowNotes = playedNotes.filter(
@@ -447,9 +566,17 @@ export function generateProgression(
       endTime: Math.min(n.endTime, windowEnd),
     }));
 
-    currentChord = determineNextChord(currentChord, clippedNotes, markovMatrix_);
-    progression.push(currentChord);
+    const result = determineNextChord(
+      history,
+      clippedNotes,
+      windowStart,
+      secondsPerBeat,
+      markovMatrix_
+    );
+    progression.push(result);
+    history.push(result.chord);
   }
 
   return progression;
 }
+

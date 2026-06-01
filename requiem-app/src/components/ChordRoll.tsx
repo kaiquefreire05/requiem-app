@@ -21,7 +21,7 @@ export const ChordRoll = memo(function ChordRoll({
   
   return (
     <div 
-      className={`relative h-full flex items-center justify-center rounded-[14px] transition-all shadow-md overflow-hidden ${
+      className={`relative h-full flex items-center justify-center rounded-[5px] transition-all shadow-md overflow-hidden ${
         isSelected ? 'ring-2 ring-white ring-offset-1 ring-offset-[#111] z-20 bg-[#e0ff24]' : 'bg-[#d0f014] hover:bg-[#d8f81c]'
       }`}
       style={{ width: `${width}px` }}
