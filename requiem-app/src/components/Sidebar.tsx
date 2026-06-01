@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import {
   apiGetSessions,
@@ -14,6 +14,7 @@ interface SidebarProps {
   setIsSidebarOpen: (isOpen: boolean) => void;
   activeSessionId: string | null;
   onSessionChange: (session: ChatSession | null) => void;
+  activeSession?: ChatSession | null;
 }
 
 export function Sidebar({
@@ -21,6 +22,7 @@ export function Sidebar({
   setIsSidebarOpen,
   activeSessionId,
   onSessionChange,
+  activeSession,
 }: SidebarProps) {
   const { user, logout } = useAuth();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -45,16 +47,34 @@ export function Sidebar({
     loadSessions();
   }, [loadSessions]);
 
+  // Reload sessions list whenever activeSession changes to a new value
+  // (e.g., auto-created from App.tsx after harmony generation)
+  const prevActiveSessionIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const prevId = prevActiveSessionIdRef.current;
+    const currId = activeSession?.id ?? null;
+    if (currId && currId !== prevId) {
+      // A new session appeared — reload list so it shows up in sidebar
+      loadSessions();
+    }
+    prevActiveSessionIdRef.current = currId;
+  }, [activeSession?.id, loadSessions]);
+
   const handleNewSession = async () => {
+    // Conta quantas sessões já começam com "Nova Composição" para evitar duplicatas
+    const BASE = 'Nova Composição';
+    const existingCount = sessions.filter(s => s.title === BASE || s.title.startsWith(`${BASE} (`)).length;
+    const title = existingCount === 0 ? BASE : `${BASE} (${existingCount + 1})`;
+
     try {
-      const { session } = await apiCreateSession('Nova Composição');
+      const { session } = await apiCreateSession(title);
       setSessions(prev => [session, ...prev]);
       onSessionChange(session);
     } catch {
       // If backend is down, create a local-only session
       const localSession: ChatSession = {
         id: Date.now().toString(),
-        title: 'Nova Composição',
+        title,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };

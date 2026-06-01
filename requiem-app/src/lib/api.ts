@@ -61,6 +61,13 @@ export async function apiRenameSession(id: string, title: string) {
   });
 }
 
+export async function apiSaveComposition(id: string, compositionData: SerializedBlock[]) {
+  return apiFetch<{ success: boolean }>(`/sessions/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ compositionData }),
+  });
+}
+
 export async function apiDeleteSession(id: string) {
   return apiFetch<{ success: boolean }>(`/sessions/${id}`, {
     method: 'DELETE',
@@ -81,11 +88,38 @@ export interface User {
   name: string;
 }
 
+/** Serializable version of a chord segment (no complex objects) */
+export interface SerializedChordSegment {
+  id: string;
+  chord: string;
+  durationBeats: number;
+}
+
+/** Serializable version of a detected note */
+export interface SerializedNote {
+  pitch: number;
+  startTime: number;
+  endTime: number;
+  amplitude: number;
+}
+
+/** Serializable composition block stored in the DB */
+export interface SerializedBlock {
+  id: string;
+  name: string;
+  notes: SerializedNote[];
+  progression: SerializedChordSegment[];
+  key: string;
+  bpm: number;
+  timeSignature: string;
+}
+
 export interface ChatSession {
   id: string;
   title: string;
   createdAt: string;
   updatedAt: string;
+  compositionData?: SerializedBlock[] | null;
   messages?: { content: string; createdAt: string }[];
 }
 

@@ -19,6 +19,7 @@ router.get('/', async (req, res) => {
         title: true,
         createdAt: true,
         updatedAt: true,
+        compositionData: true,
         messages: {
           orderBy: { createdAt: 'desc' },
           take: 1,
@@ -67,13 +68,18 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// PATCH /api/sessions/:id — rename session
+// PATCH /api/sessions/:id — rename session or save composition data
 router.patch('/:id', async (req, res) => {
-  const { title } = req.body;
+  const { title, compositionData } = req.body;
   try {
+    const updateData = {};
+    if (title !== undefined) updateData.title = title;
+    if (compositionData !== undefined) updateData.compositionData = compositionData;
+    updateData.updatedAt = new Date();
+
     const session = await prisma.chatSession.updateMany({
       where: { id: req.params.id, userId: req.userId },
-      data: { title },
+      data: updateData,
     });
     if (session.count === 0) return res.status(404).json({ error: 'Sessão não encontrada' });
     res.json({ success: true });

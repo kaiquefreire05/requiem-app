@@ -18,13 +18,14 @@ model User {
 }
 
 model ChatSession {
-  id        String    @id @default(cuid())
-  title     String    @default("Nova Composição")
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  messages  Message[]
+  id              String    @id @default(cuid())
+  title           String    @default("Nova Composição")
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  compositionData Json?     // Stores serialized CompositionBlock[]
+  messages        Message[]
 }
 
 model Message {

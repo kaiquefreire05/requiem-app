@@ -10,7 +10,8 @@ import type { DetectedNote } from "./hooks/usePitchDetector";
 import { Sidebar } from "./components/Sidebar";
 import { RecordControls } from "./components/RecordControls";
 import { DynamicRing } from "./components/DynamicRing";
-import type { ChatSession } from "./lib/api";
+import type { ChatSession, SerializedBlock } from "./lib/api";
+import { apiSaveComposition, apiCreateSession } from "./lib/api";
 
 import { StudioView } from "./components/StudioView";
 import type { AppTab } from "./components/BottomNav";
@@ -259,10 +260,59 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>("vibe");
 
-  // ── Session state ─────────────────────────────────────
+  // ── Session state ───────────────────────────────────────────────
   const [activeSession, setActiveSession] = useState<ChatSession | null>(null);
+  const activeSessionRef = useRef<ChatSession | null>(null);
+
+  // Keep ref in sync for use inside async callbacks
+  useEffect(() => {
+    activeSessionRef.current = activeSession;
+  }, [activeSession]);
+
+  // When user picks a session from the sidebar, restore its composition
   const handleSessionChange = useCallback((session: ChatSession | null) => {
     setActiveSession(session);
+    if (!session) return;
+
+    if (session.compositionData && session.compositionData.length > 0) {
+      // Rebuild blocks from persisted data (no noteSequence — rebuilt on first play)
+      const restored: CompositionBlock[] = session.compositionData.map(b => ({
+        id: b.id,
+        name: b.name,
+        notes: b.notes as DetectedNote[],
+        progression: b.progression,
+        key: b.key,
+        bpm: b.bpm,
+        timeSignature: b.timeSignature,
+        noteSequence: b.notes.length > 0 ? (() => {
+          try {
+            return progressionToNoteSequence(
+              b.progression,
+              b.notes as DetectedNote[],
+              b.bpm,
+              parseInt(b.timeSignature.split('/')[1] || '4')
+            );
+          } catch { return undefined; }
+        })() : undefined,
+      }));
+      setBlocks(restored);
+      setActiveBlockId(restored[0].id);
+      setActiveTab(restored[0].noteSequence ? "studio" : "vibe");
+    } else {
+      // New empty session — reset to default
+      const defaultBlock: CompositionBlock = {
+        id: Date.now().toString(),
+        name: "Verso 1",
+        notes: [],
+        progression: [],
+        key: "C",
+        bpm: 120,
+        timeSignature: "4/4",
+      };
+      setBlocks([defaultBlock]);
+      setActiveBlockId(defaultBlock.id);
+      setActiveTab("vibe");
+    }
   }, []);
 
   // ── Refs ──────────────────────────────────────────────
@@ -455,20 +505,58 @@ export default function App() {
           );
 
           // 9) Adicionar resultado
-          setBlocks(prev => prev.map(b => 
-            b.id === activeBlockId 
-              ? { 
-                  ...b, 
-                  notes: gluedNotes, 
-                  progression, 
-                  noteSequence, 
-                  key: detectedKey, 
-                  bpm: estimatedBpm, 
-                  timeSignature: defaultTimeSignature 
-                } 
-              : b
-          ));
+          let finalBlocks: CompositionBlock[] = [];
+          setBlocks(prev => {
+            const next = prev.map(b =>
+              b.id === activeBlockId
+                ? {
+                    ...b,
+                    notes: gluedNotes,
+                    progression,
+                    noteSequence,
+                    key: detectedKey,
+                    bpm: estimatedBpm,
+                    timeSignature: defaultTimeSignature,
+                  }
+                : b
+            );
+            finalBlocks = next;
+            return next;
+          });
           setAppState("IDLE");
+
+          // 10) Persistir no backend — cria sessão se não houver uma ativa
+          setTimeout(async () => {
+            try {
+              let session = activeSessionRef.current;
+              if (!session) {
+                // Gera título musical único: "Am · Dm – G – C · 19:31"
+                const timeStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                const chordPreview = progressionString.slice(0, 3).join(' – ');
+                const sessionTitle = `${detectedKey} · ${chordPreview} · ${timeStr}`;
+
+                const { session: newSession } = await apiCreateSession(sessionTitle);
+                session = newSession;
+                setActiveSession(newSession);
+                activeSessionRef.current = newSession;
+              }
+
+              const serialized: SerializedBlock[] = finalBlocks.map(b => ({
+                id: b.id,
+                name: b.name,
+                notes: b.notes,
+                progression: b.progression,
+                key: b.key,
+                bpm: b.bpm,
+                timeSignature: b.timeSignature,
+              }));
+
+              await apiSaveComposition(session.id, serialized);
+              console.log('[Requiem] Composição salva na sessão', session.id);
+            } catch (saveErr) {
+              console.warn('[Requiem] Não foi possível salvar no backend:', saveErr);
+            }
+          }, 0);
 
         } catch (err) {
           console.error("Erro ao gerar harmonia:", err);
@@ -487,21 +575,26 @@ export default function App() {
 
   // ── Atualizar Progressão ───────────────────────────────
   const handleUpdateProgression = useCallback((newProgression: ChordSegment[]) => {
-    setBlocks(prev => prev.map(b => {
-      if (b.id !== activeBlockId || b.notes.length === 0) return b;
-      try {
-        const noteSequence = progressionToNoteSequence(
-          newProgression,
-          b.notes,
-          bpm,
-          utValue,
-        );
-        return { ...b, progression: newProgression, noteSequence };
-      } catch (err) {
-        console.error("Erro ao atualizar progressão:", err);
-        return b;
-      }
-    }));
+    let updatedBlocks: CompositionBlock[] = [];
+    setBlocks(prev => {
+      const next = prev.map(b => {
+        if (b.id !== activeBlockId || b.notes.length === 0) return b;
+        try {
+          const noteSequence = progressionToNoteSequence(
+            newProgression,
+            b.notes,
+            bpm,
+            utValue,
+          );
+          return { ...b, progression: newProgression, noteSequence };
+        } catch (err) {
+          console.error("Erro ao atualizar progressão:", err);
+          return b;
+        }
+      });
+      updatedBlocks = next;
+      return next;
+    });
     
     // Reiniciar player se estiver tocando
     if (playingIndexRef.current === 0) {
@@ -509,6 +602,26 @@ export default function App() {
        setPlayingIndex(null);
        playingIndexRef.current = null;
     }
+
+    // Auto-save no backend
+    setTimeout(async () => {
+      const session = activeSessionRef.current;
+      if (!session || updatedBlocks.length === 0) return;
+      try {
+        const serialized: SerializedBlock[] = updatedBlocks.map(b => ({
+          id: b.id,
+          name: b.name,
+          notes: b.notes,
+          progression: b.progression,
+          key: b.key,
+          bpm: b.bpm,
+          timeSignature: b.timeSignature,
+        }));
+        await apiSaveComposition(session.id, serialized);
+      } catch (e) {
+        console.warn('[Requiem] Auto-save progressão falhou:', e);
+      }
+    }, 0);
   }, [bpm, utValue, activeBlockId, stringEngine]);
 
   // ── Alterar Velocidade de Execução (BPM) ──────────────
@@ -661,6 +774,7 @@ export default function App() {
         setIsSidebarOpen={setIsSidebarOpen}
         activeSessionId={activeSession?.id ?? null}
         onSessionChange={handleSessionChange}
+        activeSession={activeSession}
       />
 
       {/* ─── VIBE VIEW ─── */}
