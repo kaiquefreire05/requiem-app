@@ -5,6 +5,7 @@ import type { INoteSequence } from "@magenta/music";
 export interface UseStringEngineReturn {
   isLoaded: boolean;
   playSequence: (ns: INoteSequence, startTimeOffset?: number) => Promise<void>;
+  playFullArrangement: (blocks: { noteSequence?: INoteSequence; bpm: number }[]) => Promise<void>;
   stop: () => void;
 }
 
@@ -99,5 +100,55 @@ export function useStringEngine(): UseStringEngineReturn {
     [isLoaded, stop]
   );
 
-  return { isLoaded, playSequence, stop };
+  const playFullArrangement = useCallback(
+    async (blocks: { noteSequence?: INoteSequence; bpm: number }[]) => {
+      if (!isLoaded || !samplerRef.current) return;
+
+      await Tone.start();
+      stop();
+
+      const sampler = samplerRef.current;
+      let accumulatedTime = 0;
+
+      blocks.forEach((block) => {
+        if (!block.noteSequence) return;
+        
+        // Automação do BPM: agendar a troca de BPM no momento em que o bloco inicia
+        Tone.Transport.schedule((time) => {
+          Tone.Transport.bpm.value = block.bpm;
+        }, `+${accumulatedTime}`);
+
+        let maxEndTime = 0;
+
+        // Agendar todas as notas deste bloco
+        block.noteSequence.notes?.forEach((note) => {
+          if (note.startTime != null && note.endTime != null && note.pitch != null) {
+            const freq = Tone.Frequency(note.pitch, "midi").toNote();
+            const duration = note.endTime - note.startTime;
+            
+            Tone.Transport.schedule((time) => {
+              sampler.triggerAttackRelease(
+                freq,
+                duration,
+                time,
+                note.instrument === 0 ? 1 : 0.7
+              );
+            }, `+${accumulatedTime + note.startTime}`);
+
+            if (note.endTime > maxEndTime) {
+              maxEndTime = note.endTime;
+            }
+          }
+        });
+
+        // Atualizar o tempo acumulado para o próximo bloco
+        accumulatedTime += maxEndTime;
+      });
+
+      Tone.Transport.start();
+    },
+    [isLoaded, stop]
+  );
+
+  return { isLoaded, playSequence, stop, playFullArrangement };
 }

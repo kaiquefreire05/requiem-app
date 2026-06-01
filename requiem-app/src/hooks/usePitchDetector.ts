@@ -415,6 +415,9 @@ export function usePitchDetector(): UsePitchDetectorReturn {
         basicPitchRef.current = new BasicPitch(MODEL_URL);
       }
 
+      // Yield para a UI atualizar logs antes da inferência
+      await new Promise(resolve => setTimeout(resolve, 50));
+
       // ── 4. Inferência ─────────────────────────────────
       let frames: number[][] = [];
       let onsets: number[][] = [];
@@ -435,6 +438,9 @@ export function usePitchDetector(): UsePitchDetectorReturn {
         },
       );
       console.log(`[BasicPitch] Frames: ${frames.length}`);
+
+      // Yield para garantir que a UI respire antes da conversão final
+      await new Promise(resolve => setTimeout(resolve, 50));
 
       // ── 5. Converter → DetectedNote[] ─────────────────
       const noteEvents = outputToNotesPoly(frames, onsets, 0.5, 0.3, 11, true, null, null, true, 11);

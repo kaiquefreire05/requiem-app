@@ -266,6 +266,79 @@ export const normalizeProgressionToC = (
   });
 };
 
+/** Mapeamento de intervalos em semitons (0 a 11) para Graus Relativos Base (Numerais Romanos). */
+const INTERVAL_TO_ROMAN = ["I", "bII", "II", "bIII", "III", "IV", "bV", "V", "bVI", "VI", "bVII", "VII"];
+
+/**
+ * Converte um acorde absoluto (ex: "Am") para seu Grau Relativo / Numeral Romano (ex: "ii")
+ * na tonalidade original fornecida.
+ */
+export const chordToRoman = (chord: string, tonality: string): string => {
+  const parsed = parseChord(chord);
+  if (!parsed) return chord;
+
+  const rootOffset = ROOT_OFFSETS[parsed.root];
+  if (rootOffset === undefined) return chord;
+  
+  const tonalityOffset = getTonalityOffset(tonality);
+
+  // Intervalo em semitons da tônica da tonalidade até a tônica do acorde (0 - 11)
+  const interval = (rootOffset - tonalityOffset + 12) % 12;
+
+  let roman = INTERVAL_TO_ROMAN[interval];
+
+  // Regra de capitalização: se for menor ou diminuto, a base do numeral é minúscula
+  const isMinor = parsed.suffix.startsWith("m") && !parsed.suffix.startsWith("maj");
+  const isDim = parsed.suffix.startsWith("dim");
+
+  if (isMinor || isDim) {
+    roman = roman.toLowerCase();
+  }
+
+  // Omitimos o "m" redundante (já que "ii" já implica menor) para ficar limpo
+  let suffix = parsed.suffix;
+  if (suffix === "m") suffix = "";
+  else if (suffix.startsWith("m") && !suffix.startsWith("maj")) {
+    suffix = suffix.substring(1); // "m7" vira "7", acoplado ao numeral minúsculo (ex: "ii7")
+  }
+  
+  return roman + suffix;
+};
+
+/**
+ * Converte um Grau Relativo / Numeral Romano (ex: "ii", "V7") para um acorde absoluto (ex: "Am", "D7")
+ * na tonalidade alvo.
+ */
+export const romanToChord = (roman: string, tonality: string): string => {
+  // Regex para isolar o numeral romano do sufixo
+  const romanRegex = /^([b#]?(?:III|iii|II|ii|IV|iv|VIII|viii|VII|vii|VI|vi|V|v|I|i))((?:.*))$/;
+  const match = roman.match(romanRegex);
+  if (!match) return roman;
+
+  const baseRoman = match[1];
+  let suffix = match[2];
+
+  // Encontrar o intervalo buscando a versão maiúscula
+  let searchBase = baseRoman.toUpperCase();
+  if (searchBase.startsWith("B")) searchBase = "b" + searchBase.substring(1);
+  if (searchBase.startsWith("#")) searchBase = "#" + searchBase.substring(1);
+
+  const interval = INTERVAL_TO_ROMAN.indexOf(searchBase);
+  if (interval === -1) return roman;
+
+  // Restaurar o sufixo "m" se a base era minúscula e não tem "dim"
+  const isLowerCase = baseRoman === baseRoman.toLowerCase();
+  if (isLowerCase && !suffix.startsWith("dim")) {
+    suffix = "m" + suffix;
+  }
+
+  const tonalityOffset = getTonalityOffset(tonality);
+  const rootIndex = (tonalityOffset + interval) % 12;
+
+  const noteNames = noteNamesFor(tonality);
+  return noteNames[rootIndex] + suffix;
+};
+
 /**
  * Retorna as pitch classes reais (0-11) para qualquer acorde válido (ex: "A#", "Cm7").
  * Usado pelo sintetizador para reproduzir acordes de qualquer tonalidade,

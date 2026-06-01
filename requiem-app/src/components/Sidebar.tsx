@@ -9,7 +9,7 @@ interface SidebarProps {
 export function Sidebar({ isSidebarOpen, setIsSidebarOpen, recentMelodies }: SidebarProps) {
   return (
     <aside
-      className={`flex flex-col bg-black transition-all duration-300 ease-in-out relative z-20 border-r border-white/10 ${
+      className={`flex flex-col bg-black transition-all duration-300 ease-in-out relative z-20 ${
         isSidebarOpen ? 'w-72' : 'w-[68px]'
       }`}
     >

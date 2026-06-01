@@ -246,6 +246,7 @@ export default function App() {
   const [appState, setAppState] = useState<AppState>("IDLE");
   const [preRecordTimeSignature, setPreRecordTimeSignature] = useState({ numerator: 4, denominator: 4 });
   const [preRecordBpm, setPreRecordBpm] = useState<number | "AUTO">("AUTO");
+  const [preRecordTonality, setPreRecordTonality] = useState<string>("AUTO");
   
   const [blocks, setBlocks] = useState<CompositionBlock[]>([
     { id: "1", name: "Verso 1", notes: [], progression: [], key: "C", bpm: 120, timeSignature: "4/4" }
@@ -372,6 +373,8 @@ export default function App() {
 
   const processRecording = async () => {
         setAppState("PROCESSING");
+        // Yield inicial para garantir a montagem do componente ProcessingText na UI
+        await new Promise(resolve => setTimeout(resolve, 50));
 
         // 2) A rede neural do Basic Pitch avalia o áudio (demora alguns segundos)
         const detectedNotes = await pitchDetector.processPausedAudio();
@@ -383,6 +386,9 @@ export default function App() {
         }
 
         try {
+          // Yield para liberar a UI antes do processamento intensivo
+          await new Promise(resolve => setTimeout(resolve, 50));
+
           // 3) Pré-processar notas e remover o silêncio inicial (trim)
           let gluedNotes = glueNotes(detectedNotes);
           
@@ -397,8 +403,11 @@ export default function App() {
             console.log(`[Pipeline] Range temporal ajustado (sem folga inicial): 0.000s → ${tMax.toFixed(3)}s`);
           }
 
+          // Yield antes de algoritmos custosos de análise harmônica
+          await new Promise(resolve => setTimeout(resolve, 50));
+
           // 4) Analisar Key e BPM
-          const detectedKey = detectKey(gluedNotes);
+          const detectedKey = preRecordTonality === "AUTO" ? detectKey(gluedNotes) : preRecordTonality;
           const estimatedBpm = preRecordBpm === "AUTO" ? estimateBPM(gluedNotes) : preRecordBpm;
           const defaultTimeSignature = `${preRecordTimeSignature.numerator}/${preRecordTimeSignature.denominator}`;
 
@@ -414,6 +423,9 @@ export default function App() {
 
           // 5) Normalizar notas para C Major (Local Space) usando a tonalidade detectada
           const normalizedNotes = normalizeNotes(gluedNotes, detectedKey);
+
+          // Yield antes de consultar a matriz de Markov e iterar no grafo
+          await new Promise(resolve => setTimeout(resolve, 50));
 
           // 6) Gerar progressão via HarmonyEngine (opera em C Major)
           const rawProgression = generateProgression(
@@ -433,10 +445,13 @@ export default function App() {
           const progression: ChordSegment[] = progressionString.map(chord => ({
             id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
             chord,
-            durationBeats: qtValue
+            durationBeats: preRecordTimeSignature.numerator
           }));
 
           console.log(`[Pipeline] Progressão final (${tonality}): [${progressionString.join(", ")}]`);
+
+          // Yield antes da síntese final de NoteSequence
+          await new Promise(resolve => setTimeout(resolve, 50));
 
           // 8) Sintetizar em NoteSequence (melodia + acordes)
           const noteSequence = progressionToNoteSequence(
@@ -696,6 +711,8 @@ export default function App() {
                   setPreRecordTimeSignature={setPreRecordTimeSignature}
                   preRecordBpm={preRecordBpm}
                   setPreRecordBpm={setPreRecordBpm}
+                  preRecordTonality={preRecordTonality}
+                  setPreRecordTonality={setPreRecordTonality}
                 />
             </div>
             
@@ -771,6 +788,8 @@ export default function App() {
             }}
             onUpdateProgression={handleUpdateProgression}
             onRecordAgain={handleRecordAgain}
+            onReorderBlocks={setBlocks}
+            onPlayArrangement={() => stringEngine.playFullArrangement(blocks)}
           />
         </main>
       )}
@@ -800,24 +819,27 @@ function ProcessingText() {
     return () => clearInterval(interval);
   }, []);
 
-  const visibleLogs = PROCESSING_MESSAGES.slice(0, msgIndex + 1);
+  const currentIndex = Math.min(msgIndex, PROCESSING_MESSAGES.length - 1);
   
   return (
-    <div className="mt-12 flex flex-col items-start w-full max-w-md font-mono text-xs sm:text-sm text-white/70 min-h-[8rem] text-left transition-all">
-      {visibleLogs.map((log, i) => (
-        <div key={i} className="animate-fade-in flex items-start gap-3 mb-1.5 opacity-90">
-          <span className="text-white/30 select-none">{`>`}</span>
-          <span className="leading-tight">{log}</span>
-        </div>
-      ))}
-      
-      {/* Blinking cursor */}
-      {visibleLogs.length < PROCESSING_MESSAGES.length && (
-        <div className="animate-pulse flex items-start gap-3 mt-1">
-          <span className="text-white/30 select-none">{`>`}</span>
-          <span className="w-2 h-3.5 bg-white/50 mt-0.5" />
-        </div>
-      )}
+    <div className="mt-12 relative w-full max-w-md h-8 flex items-center justify-center font-sans text-xs sm:text-sm text-white/70">
+      {PROCESSING_MESSAGES.map((log, i) => {
+        let transformClass = "translate-y-4 opacity-0 pointer-events-none"; // futuro
+        if (i === currentIndex) {
+          transformClass = "translate-y-0 opacity-100"; // atual
+        } else if (i < currentIndex) {
+          transformClass = "-translate-y-4 opacity-0 pointer-events-none"; // passado
+        }
+
+        return (
+          <div 
+            key={i} 
+            className={`absolute w-full text-center transition-all duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${transformClass}`}
+          >
+            {log}
+          </div>
+        );
+      })}
     </div>
   );
 }

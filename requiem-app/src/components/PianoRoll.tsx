@@ -26,18 +26,7 @@ export function PianoRoll({ notes, laneColorClass, pxPerSecond }: PianoRollProps
   const rowPercent = 100 / pitchRange;
 
   return (
-    <div className={`relative w-full h-full ${laneColorClass} overflow-hidden rounded-md border border-black/20 shadow-inner group/piano`}>
-      {/* ── Background Grid Lines (Horizontal) ── */}
-      <div className="absolute inset-0 pointer-events-none opacity-[0.15]">
-        {Array.from({ length: pitchRange }).map((_, i) => (
-          <div
-            key={i}
-            className="w-full border-b border-black/50"
-            style={{ height: `${rowPercent}%` }}
-          />
-        ))}
-      </div>
-
+    <div className={`relative w-full h-full ${laneColorClass} overflow-hidden rounded-md group/piano`}>
       {/* ── Notes ── */}
       {notes.map((note, i) => {
         if (note.startTime == null || note.endTime == null || note.pitch == null) return null;
@@ -49,7 +38,7 @@ export function PianoRoll({ notes, laneColorClass, pxPerSecond }: PianoRollProps
         return (
           <div
             key={i}
-            className="absolute bg-black/50 rounded-sm shadow-[0_1px_2px_rgba(0,0,0,0.5)] transition-colors group-hover/piano:bg-black/60"
+            className="absolute bg-black rounded-sm transition-colors group-hover/piano:bg-black/80"
             style={{
               left: `${left}px`,
               top: `${top + rowPercent * 0.2}%`,
