@@ -35,7 +35,10 @@ export interface ChordSegment {
   id: string;
   chord: string;
   durationBeats: number;
+  velocity: number;
 }
+
+export type InstrumentType = "piano" | "strings" | "pad";
 
 export interface CompositionBlock {
   id: string;
@@ -151,6 +154,7 @@ function buildMelodySequence(
           quantizedStartStep: qStart,
           quantizedEndStep: qEnd,
           instrument: 0,
+          velocity: Math.floor(Math.max(0.1, note.amplitude || 1) * 127),
           program: 0,
         }),
       );
@@ -213,6 +217,7 @@ function progressionToNoteSequence(
           quantizedStartStep: qStart,
           quantizedEndStep: qEnd,
           instrument: 1, // voz 1 = harmonia
+          velocity: Math.floor(Math.max(0.2, seg.velocity || 0.7) * 127),
           program: 0,
         }),
       );
@@ -241,12 +246,15 @@ export default function App() {
   const [bpm, setBpm] = useState(120);
   const [qtValue, setQtValue] = useState(4);
   const [utValue, setUtValue] = useState(4);
-  const [tonality, setTonality] = useState("C");
+  const [tonality, setTonality] = useState<string>("AUTO");
 
   const [appState, setAppState] = useState<AppState>("IDLE");
   const [preRecordTimeSignature, setPreRecordTimeSignature] = useState({ numerator: 4, denominator: 4 });
   const [preRecordBpm, setPreRecordBpm] = useState<number | "AUTO">("AUTO");
   const [preRecordTonality, setPreRecordTonality] = useState<string>("AUTO");
+
+  const [melodyInstrument, setMelodyInstrument] = useState<InstrumentType>("piano");
+  const [chordsInstrument, setChordsInstrument] = useState<InstrumentType>("piano");
   
   const [blocks, setBlocks] = useState<CompositionBlock[]>([
     { id: "1", name: "Verso 1", notes: [], progression: [], key: "C", bpm: 120, timeSignature: "4/4" }
@@ -440,15 +448,19 @@ export default function App() {
           console.log(`[Pipeline] Progressão bruta (C): [${rawProgression.join(", ")}]`);
 
           // 7) Transpor progressão de volta para a tonalidade detectada
-          const progressionString = transposeProgression(rawProgression, detectedKey);
+          const transposedProgression = rawProgression.map(item => ({
+            chord: transposeProgression([item.chord], detectedKey)[0],
+            velocity: item.velocity
+          }));
           
-          const progression: ChordSegment[] = progressionString.map(chord => ({
+          const progression: ChordSegment[] = transposedProgression.map(item => ({
             id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
-            chord,
-            durationBeats: preRecordTimeSignature.numerator
+            chord: item.chord,
+            durationBeats: preRecordTimeSignature.numerator,
+            velocity: item.velocity
           }));
 
-          console.log(`[Pipeline] Progressão final (${tonality}): [${progressionString.join(", ")}]`);
+          console.log(`[Pipeline] Progressão final (${tonality}): [${progression.map(p => p.chord).join(", ")}]`);
 
           // Yield antes da síntese final de NoteSequence
           await new Promise(resolve => setTimeout(resolve, 50));
@@ -779,7 +791,7 @@ export default function App() {
             setTonality={handleSetTonality}
             isPlaying={playingIndex === 0}
             onPlay={(timeOffset) => {
-              if (activeBlock.noteSequence) playSequence(0, activeBlock.noteSequence, timeOffset);
+              if (activeBlock.noteSequence) playSequence(0, activeBlock.noteSequence, timeOffset, melodyInstrument, chordsInstrument);
             }}
             onStop={() => {
               stringEngine.stop();
@@ -789,7 +801,11 @@ export default function App() {
             onUpdateProgression={handleUpdateProgression}
             onRecordAgain={handleRecordAgain}
             onReorderBlocks={setBlocks}
-            onPlayArrangement={() => stringEngine.playFullArrangement(blocks)}
+            onPlayArrangement={() => stringEngine.playFullArrangement(blocks, melodyInstrument, chordsInstrument)}
+            melodyInstrument={melodyInstrument}
+            setMelodyInstrument={setMelodyInstrument}
+            chordsInstrument={chordsInstrument}
+            setChordsInstrument={setChordsInstrument}
           />
         </main>
       )}

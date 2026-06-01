@@ -329,6 +329,7 @@ const computeNoteScore = (
   secondsPerBeat: number,
   isHighDensity: boolean,
   avgPitch: number,
+  avgAmplitude: number,
 ): number => {
   // Sensor 2: Registro (Grave vs. Agudo)
   const isComplex = candidateNotes.length > 3 || candidateName.includes('dim') || candidateName.includes('7');
@@ -366,7 +367,17 @@ const computeNoteScore = (
     return isRoot ? base + (duration * WEIGHT_ROOT_BONUS * beatMultiplier) : base;
   }, 0);
 
-  return rawScore * registerMultiplier;
+  let finalRawScore = rawScore * registerMultiplier;
+
+  // Sensor 5: Dinâmica (Velocity/Amplitude)
+  const candidateRoman = chordToRoman(candidateName, "C");
+  if (avgAmplitude < 0.4) {
+    if (["I", "i", "IV", "iv", "vi", "VI"].includes(candidateRoman)) finalRawScore += 0.15;
+  } else if (avgAmplitude > 0.7) {
+    if (["V", "v", "vii°", "VII", "III", "iii"].includes(candidateRoman)) finalRawScore += 0.15;
+  }
+
+  return finalRawScore;
 };
 
 /**
@@ -420,13 +431,13 @@ export function determineNextChord(
   windowStart: number,
   secondsPerBeat: number,
   markovMatrix: TransitionMatrix = transitionMatrix,
-): string {
+): { chord: string, velocity: number } {
   const currentChord = chordHistory.length > 0 ? chordHistory[chordHistory.length - 1] : "C";
 
-  if (playedNotes.length === 0) return currentChord;
+  if (playedNotes.length === 0) return { chord: currentChord, velocity: 0.7 };
 
   const currentNode = HARMONY_GRAPH[currentChord];
-  if (!currentNode) return currentChord;
+  if (!currentNode) return { chord: currentChord, velocity: 0.7 };
 
   // Calcular os estados Markov a partir do histórico (em graus relativos)
   const romanHistory = chordHistory.map(c => chordToRoman(c, "C"));
@@ -440,10 +451,12 @@ export function determineNextChord(
   const isHighDensity = density > DENSITY_THRESHOLD;
 
   let sumPitch = 0;
+  let sumAmp = 0;
   let hasHighTensionLeap = false;
 
   for (let i = 0; i < density; i++) {
     sumPitch += playedNotes[i].pitch;
+    sumAmp += (playedNotes[i].amplitude || 0.7);
     if (i > 0) {
       const leap = Math.abs(playedNotes[i].pitch - playedNotes[i - 1].pitch);
       if (leap >= LEAP_THRESHOLD) {
@@ -452,6 +465,7 @@ export function determineNextChord(
     }
   }
   const avgPitch = density > 0 ? sumPitch / density : 0;
+  const avgAmplitude = density > 0 ? Math.max(0.2, sumAmp / density) : 0.7;
 
   // ── Candidatos: Avaliar TODOS os acordes do grafo para resolver Empréstimo Modal ──
   const allCandidates = Object.keys(HARMONY_GRAPH);
@@ -480,7 +494,8 @@ export function determineNextChord(
         windowStart,
         secondsPerBeat,
         isHighDensity,
-        avgPitch
+        avgPitch,
+        avgAmplitude
       );
 
       // Sensor 4: Saltos Intervalares (Leaps)
@@ -497,7 +512,7 @@ export function determineNextChord(
     { bestChord: currentChord, bestScore: -Infinity },
   );
 
-  return bestChord;
+  return { chord: bestChord, velocity: avgAmplitude };
 }
 
 // ─────────────────────────────────────────────────────────
@@ -512,8 +527,8 @@ export function generateProgression(
   timeSignatureDenominator: number,
   startChord: string = "C",
   markovMatrix_: TransitionMatrix = transitionMatrix,
-): readonly string[] {
-  if (playedNotes.length === 0) return [startChord];
+): readonly { chord: string, velocity: number }[] {
+  if (playedNotes.length === 0) return [{ chord: startChord, velocity: 0.7 }];
 
   // ── MUDANÇA: Matemática do Tempo ────────────────────────
   // O BPM na música digital refere-se a semínimas (denominador 4).
@@ -532,7 +547,7 @@ export function generateProgression(
   const windowCount = Math.max(1, Math.ceil(totalDuration / secondsPerMeasure));
 
   // ── Segmentar notas por janela e avaliar cada um ────
-  const progression: string[] = [];
+  const progression: { chord: string, velocity: number }[] = [];
   let history = [startChord];
 
   for (let w = 0; w < windowCount; w++) {
@@ -551,15 +566,15 @@ export function generateProgression(
       endTime: Math.min(n.endTime, windowEnd),
     }));
 
-    const nextChord = determineNextChord(
+    const result = determineNextChord(
       history,
       clippedNotes,
       windowStart,
       secondsPerBeat,
       markovMatrix_
     );
-    progression.push(nextChord);
-    history.push(nextChord);
+    progression.push(result);
+    history.push(result.chord);
   }
 
   return progression;

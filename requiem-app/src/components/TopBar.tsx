@@ -7,8 +7,9 @@ import {
   Pause,
   Square,
   Metronome,
+  PanelRight,
 } from "lucide-react";
-import { ALL_TONALITIES } from "../engine/TonalityAdapter";
+import { ALL_TONALITIES, QT_OPTIONS, UT_OPTIONS } from "../engine/TonalityAdapter";
 
 // ─────────────────────────────────────────────────────────
 //  Componente: BPM Input (Controlled)
@@ -58,6 +59,8 @@ export interface TopBarProps {
   setUtValue: (v: number) => void;
   tonality: string;
   setTonality: (v: string) => void;
+  isSceneBarOpen: boolean;
+  toggleSceneBar: () => void;
 }
 
 export function TopBar({
@@ -76,6 +79,8 @@ export function TopBar({
   setUtValue,
   tonality,
   setTonality,
+  isSceneBarOpen,
+  toggleSceneBar,
 }: TopBarProps) {
   
   const formatTime = (secs: number) => {
@@ -118,16 +123,20 @@ export function TopBar({
         </div>
 
         {/* Time Signature */}
-        <div className="flex items-center gap-1 ml-3 text-sm font-mono text-white">
-          <select value={qtValue} onChange={(e) => setQtValue(Number(e.target.value))} className="bg-transparent focus:outline-none appearance-none cursor-pointer"><option value={4}>4</option><option value={3}>3</option></select>
+        <div className="flex items-center gap-1 ml-3 text-sm font-mono text-white bg-black/40 px-2 py-1 rounded-md border border-white/5">
+          <select value={qtValue} onChange={(e) => setQtValue(Number(e.target.value))} className="bg-transparent focus:outline-none appearance-none cursor-pointer text-center">
+            {QT_OPTIONS.map(q => <option key={q} value={q} className="bg-zinc-900">{q}</option>)}
+          </select>
           <span className="text-white/30">/</span>
-          <select value={utValue} onChange={(e) => setUtValue(Number(e.target.value))} className="bg-transparent focus:outline-none appearance-none cursor-pointer"><option value={4}>4</option><option value={8}>8</option></select>
+          <select value={utValue} onChange={(e) => setUtValue(Number(e.target.value))} className="bg-transparent focus:outline-none appearance-none cursor-pointer text-center">
+            {UT_OPTIONS.map(u => <option key={u} value={u} className="bg-zinc-900">{u}</option>)}
+          </select>
         </div>
 
         <div className="w-px h-6 bg-white/10 mx-3" />
 
         {/* Tonality */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 ml-2 bg-black/40 px-2 py-1 rounded-md border border-white/5">
           <span className="text-white/40 text-[10px] uppercase tracking-widest font-mono">TOM</span>
           <select value={tonality} onChange={(e) => setTonality(e.target.value)} className="bg-transparent focus:outline-none appearance-none cursor-pointer text-sm font-mono text-white">
             {ALL_TONALITIES.map(t => <option key={t.value} value={t.value} className="bg-zinc-900">{t.value}</option>)}
@@ -142,7 +151,15 @@ export function TopBar({
         </div>
       </div>
 
-      <div className="flex-1 flex justify-end items-center gap-2 pr-2"></div>
+      <div className="flex-1 flex justify-end items-center gap-2 pr-2">
+        <button 
+          onClick={toggleSceneBar}
+          className={`p-2 rounded-md transition-colors ${isSceneBarOpen ? "bg-white/10 text-white" : "text-white/50 hover:text-white hover:bg-white/5"}`}
+          title={isSceneBarOpen ? "Recolher SceneBar" : "Expandir SceneBar"}
+        >
+          <PanelRight size={18} strokeWidth={2} />
+        </button>
+      </div>
     </div>
   );
 }

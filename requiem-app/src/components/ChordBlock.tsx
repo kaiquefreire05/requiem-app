@@ -65,7 +65,7 @@ export function ChordBlock({
     const probs = transitionMatrix[prevRoman] || {};
     
     const dataList = Object.entries(probs)
-      .filter(([r, p]) => p > 0)
+      .filter(([r, p]) => p >= 0.05)
       .map(([r, p]) => ({ chord: romanToChord(r, tonality), prob: p }))
       .filter(item => item.chord !== chord)
       .sort((a, b) => b.prob - a.prob);

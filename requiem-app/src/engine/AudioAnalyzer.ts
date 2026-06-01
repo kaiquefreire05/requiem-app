@@ -5,7 +5,8 @@ import type { DetectedNote } from "../hooks/usePitchDetector";
 const MAJOR_PROFILE = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
 const MINOR_PROFILE = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
 
-const PITCH_CLASS_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const PITCH_CLASS_NAMES_MAJOR = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
+const PITCH_CLASS_NAMES_MINOR = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "Bb", "B"];
 
 /**
  * Deduz a tonalidade predominante (Key) de um conjunto de notas baseado na duração total de cada Pitch Class.
@@ -57,13 +58,13 @@ export function detectKey(notes: DetectedNote[]): string {
     const corrMajor = calculateCorrelation(shiftedInput, MAJOR_PROFILE);
     if (corrMajor > maxCorrelation) {
       maxCorrelation = corrMajor;
-      bestKey = PITCH_CLASS_NAMES[shift]; // Ex: "C", "F#"
+      bestKey = PITCH_CLASS_NAMES_MAJOR[shift]; 
     }
 
     const corrMinor = calculateCorrelation(shiftedInput, MINOR_PROFILE);
     if (corrMinor > maxCorrelation) {
       maxCorrelation = corrMinor;
-      bestKey = `${PITCH_CLASS_NAMES[shift]}m`; // Ex: "Cm", "F#m"
+      bestKey = `${PITCH_CLASS_NAMES_MINOR[shift]}m`; 
     }
   }
 

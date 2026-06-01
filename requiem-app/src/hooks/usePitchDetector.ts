@@ -26,6 +26,8 @@ export interface DetectedNote {
   startTime: number;
   /** Tempo de fim da nota em segundos */
   endTime: number;
+  /** Amplitude da nota (velocidade/intensidade) */
+  amplitude: number;
 }
 
 export interface UsePitchDetectorReturn {
@@ -450,6 +452,7 @@ export function usePitchDetector(): UsePitchDetectorReturn {
         pitch: note.pitchMidi,
         startTime: note.startTimeSeconds,
         endTime: note.startTimeSeconds + note.durationSeconds,
+        amplitude: note.amplitude || 0.7,
       }));
 
       // Log detalhado de cada nota

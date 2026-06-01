@@ -1,28 +1,31 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import * as Tone from "tone";
 import type { INoteSequence } from "@magenta/music";
+import type { InstrumentType } from "../App";
 
 export interface UseStringEngineReturn {
   isLoaded: boolean;
-  playSequence: (ns: INoteSequence, startTimeOffset?: number) => Promise<void>;
-  playFullArrangement: (blocks: { noteSequence?: INoteSequence; bpm: number }[]) => Promise<void>;
+  playSequence: (ns: INoteSequence, startTimeOffset?: number, melodyInst?: InstrumentType, chordsInst?: InstrumentType) => Promise<void>;
+  playFullArrangement: (blocks: { noteSequence?: INoteSequence; bpm: number }[], melodyInst?: InstrumentType, chordsInst?: InstrumentType) => Promise<void>;
   stop: () => void;
 }
 
 export function useStringEngine(): UseStringEngineReturn {
   const [isLoaded, setIsLoaded] = useState(false);
-  const samplerRef = useRef<Tone.Sampler | null>(null);
+  const pianoSynthRef = useRef<Tone.Sampler | null>(null);
+  const stringsSynthRef = useRef<Tone.PolySynth | null>(null);
+  const padSynthRef = useRef<Tone.PolySynth | null>(null);
   const reverbRef = useRef<Tone.Reverb | null>(null);
 
   useEffect(() => {
-    // 1. Instanciar o Reverb
+    // 1. Instanciar o Reverb comum para dar "espaço" a todos os synths
     const reverb = new Tone.Reverb({
       decay: 2.5,
       preDelay: 0.1,
     });
 
-    // 2. Instanciar o Sampler (Salamander Grand Piano)
-    const sampler = new Tone.Sampler({
+    // 2. Instanciar PIANO (Sampler)
+    const pianoSynth = new Tone.Sampler({
       urls: {
         A0: "A0.mp3",
         C1: "C1.mp3",
@@ -34,22 +37,55 @@ export function useStringEngine(): UseStringEngineReturn {
         C7: "C7.mp3",
       },
       baseUrl: "https://tonejs.github.io/audio/salamander/",
-      volume: 12, // +12 dB para compensar o baixo ganho das amostras acústicas
+      volume: 12,
       onload: () => {
         setIsLoaded(true);
       },
     });
+    pianoSynth.chain(reverb, Tone.Destination);
 
-    // 3. Conectar a cadeia de sinal: Sampler -> Reverb -> Master
-    sampler.chain(reverb, Tone.Destination);
+    // 3. Instanciar STRINGS (PolySynth com ataque e release lentos)
+    const stringsSynth = new Tone.PolySynth(Tone.Synth, {
+      oscillator: { type: "sawtooth" },
+      envelope: {
+        attack: 0.6,
+        decay: 0.2,
+        sustain: 0.8,
+        release: 1.5,
+      },
+      volume: -8,
+    });
+    stringsSynth.chain(reverb, Tone.Destination);
+
+    // 4. Instanciar PAD (FMSynth com Filtro Lowpass)
+    const padSynth = new Tone.PolySynth(Tone.FMSynth, {
+      harmonicity: 0.5,
+      modulationIndex: 1.2,
+      oscillator: { type: "sine" },
+      modulation: { type: "triangle" },
+      envelope: {
+        attack: 1.0,
+        decay: 0.5,
+        sustain: 1.0,
+        release: 2.0,
+      },
+      volume: -10,
+    });
+    const lowpassFilter = new Tone.Filter(800, "lowpass");
+    padSynth.chain(lowpassFilter, reverb, Tone.Destination);
 
     // Guardar as refs
-    samplerRef.current = sampler;
+    pianoSynthRef.current = pianoSynth;
+    stringsSynthRef.current = stringsSynth;
+    padSynthRef.current = padSynth;
     reverbRef.current = reverb;
 
-    // 4. Limpeza da memória (prevenir memory leaks)
+    // 5. Limpeza da memória
     return () => {
-      sampler.dispose();
+      pianoSynth.dispose();
+      stringsSynth.dispose();
+      padSynth.dispose();
+      lowpassFilter.dispose();
       reverb.dispose();
       Tone.Transport.stop();
       Tone.Transport.cancel();
@@ -59,21 +95,33 @@ export function useStringEngine(): UseStringEngineReturn {
   const stop = useCallback(() => {
     Tone.Transport.stop();
     Tone.Transport.cancel(); // Limpa a fila de eventos agendados
-    if (samplerRef.current) {
-      samplerRef.current.releaseAll();
-    }
+    if (pianoSynthRef.current) pianoSynthRef.current.releaseAll();
+    if (stringsSynthRef.current) stringsSynthRef.current.releaseAll();
+    if (padSynthRef.current) padSynthRef.current.releaseAll();
   }, []);
 
+  const routeNote = (note: any, time: number, duration: number, melodyInst: InstrumentType = "piano", chordsInst: InstrumentType = "piano") => {
+    if (!pianoSynthRef.current || !stringsSynthRef.current || !padSynthRef.current) return;
+    
+    // Identificar qual instrumento usar (0 = Melody, 1 = Chords)
+    const instType = note.instrument === 0 ? melodyInst : chordsInst;
+    let synth: Tone.Sampler | Tone.PolySynth = pianoSynthRef.current;
+    
+    if (instType === "strings") synth = stringsSynthRef.current;
+    if (instType === "pad") synth = padSynthRef.current;
+
+    const freq = Tone.Frequency(note.pitch, "midi").toNote();
+    const velocity = note.velocity != null ? note.velocity / 127 : (note.instrument === 0 ? 1 : 0.7);
+    
+    synth.triggerAttackRelease(freq, duration, time, velocity);
+  };
+
   const playSequence = useCallback(
-    async (ns: INoteSequence, startTimeOffset: number = 0) => {
-      if (!isLoaded || !samplerRef.current) return;
+    async (ns: INoteSequence, startTimeOffset: number = 0, melodyInst: InstrumentType = "piano", chordsInst: InstrumentType = "piano") => {
+      if (!isLoaded || !pianoSynthRef.current) return;
 
-      // Garantir que o áudio do Tone.js está desbloqueado
       await Tone.start();
-
       stop(); // Parar playback anterior
-
-      const sampler = samplerRef.current;
 
       // Agendar todas as notas da NoteSequence
       ns.notes?.forEach((note) => {
@@ -81,16 +129,10 @@ export function useStringEngine(): UseStringEngineReturn {
           if (note.endTime <= startTimeOffset) return; // Skip finished notes
 
           const startDelay = Math.max(0, note.startTime - startTimeOffset);
-          const freq = Tone.Frequency(note.pitch, "midi").toNote();
           const duration = note.endTime - Math.max(note.startTime, startTimeOffset);
           
           Tone.Transport.schedule((time) => {
-            sampler.triggerAttackRelease(
-              freq,
-              duration,
-              time,
-              note.instrument === 0 ? 1 : 0.7 // Volume: melodia mais alta que a harmonia
-            );
+            routeNote(note, time, duration, melodyInst, chordsInst);
           }, `+${startDelay}`);
         }
       });
@@ -101,38 +143,29 @@ export function useStringEngine(): UseStringEngineReturn {
   );
 
   const playFullArrangement = useCallback(
-    async (blocks: { noteSequence?: INoteSequence; bpm: number }[]) => {
-      if (!isLoaded || !samplerRef.current) return;
+    async (blocks: { noteSequence?: INoteSequence; bpm: number }[], melodyInst: InstrumentType = "piano", chordsInst: InstrumentType = "piano") => {
+      if (!isLoaded || !pianoSynthRef.current) return;
 
       await Tone.start();
       stop();
 
-      const sampler = samplerRef.current;
       let accumulatedTime = 0;
 
       blocks.forEach((block) => {
         if (!block.noteSequence) return;
         
-        // Automação do BPM: agendar a troca de BPM no momento em que o bloco inicia
         Tone.Transport.schedule((time) => {
           Tone.Transport.bpm.value = block.bpm;
         }, `+${accumulatedTime}`);
 
         let maxEndTime = 0;
 
-        // Agendar todas as notas deste bloco
         block.noteSequence.notes?.forEach((note) => {
           if (note.startTime != null && note.endTime != null && note.pitch != null) {
-            const freq = Tone.Frequency(note.pitch, "midi").toNote();
             const duration = note.endTime - note.startTime;
             
             Tone.Transport.schedule((time) => {
-              sampler.triggerAttackRelease(
-                freq,
-                duration,
-                time,
-                note.instrument === 0 ? 1 : 0.7
-              );
+              routeNote(note, time, duration, melodyInst, chordsInst);
             }, `+${accumulatedTime + note.startTime}`);
 
             if (note.endTime > maxEndTime) {
@@ -141,7 +174,6 @@ export function useStringEngine(): UseStringEngineReturn {
           }
         });
 
-        // Atualizar o tempo acumulado para o próximo bloco
         accumulatedTime += maxEndTime;
       });
 
