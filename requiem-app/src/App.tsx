@@ -10,6 +10,7 @@ import type { DetectedNote } from "./hooks/usePitchDetector";
 import { Sidebar } from "./components/Sidebar";
 import { RecordControls } from "./components/RecordControls";
 import { DynamicRing } from "./components/DynamicRing";
+import type { ChatSession } from "./lib/api";
 
 import { StudioView } from "./components/StudioView";
 import type { AppTab } from "./components/BottomNav";
@@ -236,6 +237,7 @@ function progressionToNoteSequence(
 // ─────────────────────────────────────────────────────────
 
 export default function App() {
+
   // ── UI state ──────────────────────────────────────────
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [bpm, setBpm] = useState(120);
@@ -256,6 +258,12 @@ export default function App() {
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>("vibe");
+
+  // ── Session state ─────────────────────────────────────
+  const [activeSession, setActiveSession] = useState<ChatSession | null>(null);
+  const handleSessionChange = useCallback((session: ChatSession | null) => {
+    setActiveSession(session);
+  }, []);
 
   // ── Refs ──────────────────────────────────────────────
   const appStateRef = useRef<AppState>("IDLE");
@@ -548,13 +556,6 @@ export default function App() {
   const isProcessing = appState === "PROCESSING";
   const isButtonDisabled = isProcessing || !stringEngine.isLoaded;
 
-  const recentMelodies = [
-    "Invenção a 2 Vozes - Dó Maior",
-    "Estudo de Contraponto #1",
-    "Rascunho de Harmonia 01",
-    "Teste de Microfone",
-  ];
-
   // Auto-switch to Studio when result is generated
   useEffect(() => {
     if (activeBlock?.noteSequence && activeTab === "vibe") {
@@ -658,7 +659,8 @@ export default function App() {
       <Sidebar
         isSidebarOpen={isSidebarOpen}
         setIsSidebarOpen={setIsSidebarOpen}
-        recentMelodies={recentMelodies}
+        activeSessionId={activeSession?.id ?? null}
+        onSessionChange={handleSessionChange}
       />
 
       {/* ─── VIBE VIEW ─── */}
