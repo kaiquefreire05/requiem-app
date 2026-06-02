@@ -1,5 +1,5 @@
 // Central API client for backend communication
-const BASE_URL = 'http://localhost:3001/api';
+const BASE_URL: string = ((import.meta as any).env?.VITE_API_URL ?? '');
 
 function getToken(): string | null {
   return localStorage.getItem('requiem_token');
