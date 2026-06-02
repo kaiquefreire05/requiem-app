@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Mic,
   SkipBack,
@@ -8,43 +8,15 @@ import {
   Square,
   Metronome,
   PanelRight,
+  Settings2,
+  Activity,
+  Music,
 } from "lucide-react";
-import { ALL_TONALITIES, QT_OPTIONS, UT_OPTIONS } from "../engine/TonalityAdapter";
+import { ALL_TONALITIES } from "../engine/TonalityAdapter";
+import type { TimeSignature } from "./TimeSignatureSelector"; // assuming it exists or define inline
 
-// ─────────────────────────────────────────────────────────
-//  Componente: BPM Input (Controlled)
-// ─────────────────────────────────────────────────────────
-export function BpmInput({ bpm, setBpm }: { bpm: number; setBpm: (v: number) => void }) {
-  const [localBpm, setLocalBpm] = useState(bpm.toString());
-  useEffect(() => { setLocalBpm(bpm.toString()); }, [bpm]);
-
-  const commit = () => {
-    let num = parseInt(localBpm, 10);
-    if (isNaN(num)) num = 120;
-    num = Math.max(30, Math.min(300, num));
-    setBpm(num);
-    setLocalBpm(num.toString());
-  };
-
-  return (
-    <input
-      type="number"
-      min={30}
-      max={300}
-      value={localBpm}
-      onChange={e => setLocalBpm(e.target.value)}
-      onBlur={commit}
-      onKeyDown={e => e.key === 'Enter' && commit()}
-      className="w-12 bg-transparent border-none text-sm font-mono text-white text-center focus:outline-none appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-    />
-  );
-}
-
-// ─────────────────────────────────────────────────────────
-//  Props & Componente: TopBar
-// ─────────────────────────────────────────────────────────
 export interface TopBarProps {
-  onRecordAgain?: () => void;
+  onStartRecording?: () => void;
   isPlaying: boolean;
   time: number;
   onPlay: (time?: number) => void;
@@ -61,10 +33,21 @@ export interface TopBarProps {
   setTonality: (v: string) => void;
   isSceneBarOpen: boolean;
   toggleSceneBar: () => void;
+  isRecorded: boolean;
+  preRecordBpm: number | "AUTO";
+  setPreRecordBpm: (val: number | "AUTO") => void;
+  preRecordTonality: string;
+  setPreRecordTonality: (val: string) => void;
+  preRecordTimeSignature: TimeSignature;
+  setPreRecordTimeSignature: (val: TimeSignature) => void;
 }
 
+const COMMON_BPMS = [80, 90, 100, 120, 140, 160];
+const NUMERATOR_OPTIONS = [2, 3, 4, 6, 9];
+const DENOMINATOR_OPTIONS = [4, 8];
+
 export function TopBar({
-  onRecordAgain,
+  onStartRecording,
   isPlaying,
   time,
   onPlay,
@@ -81,7 +64,35 @@ export function TopBar({
   setTonality,
   isSceneBarOpen,
   toggleSceneBar,
+  isRecorded,
+  preRecordBpm,
+  setPreRecordBpm,
+  preRecordTonality,
+  setPreRecordTonality,
+  preRecordTimeSignature,
+  setPreRecordTimeSignature,
 }: TopBarProps) {
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const settingsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
+        setIsSettingsOpen(false);
+      }
+    };
+    if (isSettingsOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isSettingsOpen]);
+  
+  const currentBpm = isRecorded ? bpm : preRecordBpm;
+  const setAnyBpm = (val: number | "AUTO") => isRecorded ? setBpm(val as number) : setPreRecordBpm(val);
+  const currentTimeSig = isRecorded ? { numerator: qtValue, denominator: utValue } : preRecordTimeSignature;
+  const setAnyTimeSig = (val: TimeSignature) => isRecorded ? (setQtValue(val.numerator), setUtValue(val.denominator)) : setPreRecordTimeSignature(val);
+  const currentTonality = isRecorded ? tonality : preRecordTonality;
+  const setAnyTonality = (val: string) => isRecorded ? setTonality(val) : setPreRecordTonality(val);
   
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60).toString().padStart(2, '0');
@@ -94,11 +105,11 @@ export function TopBar({
     <div className="w-full h-[52px] bg-[#1a1a1a] flex items-center justify-between px-4 shrink-0 shadow-md z-50 relative">
       <div className="flex-1 flex justify-start">
         <button 
-          onClick={onRecordAgain}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-white/50 hover:text-white hover:bg-white/5 transition-colors"
+          onClick={onStartRecording}
+          className="flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold text-red-500 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 transition-all hover:scale-[1.02]"
         >
-          <Mic size={14} />
-          <span>Gravar novamente</span>
+          <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse-subtle" />
+          <span>GRAVAR</span>
         </button>
       </div>
 
@@ -111,36 +122,137 @@ export function TopBar({
           <button onClick={handleSkipForward} className="p-1.5 rounded-md text-white/50 hover:text-white hover:bg-white/5 transition-colors"><SkipForward size={16} /></button>
         </div>
 
-        <div className="w-px h-6 bg-white/10 mx-3" />
+        {/* Unified Settings Button & Pills */}
+        <div className="flex items-center gap-2 relative">
+          <button
+            onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+            className={`flex items-center justify-center p-1.5 border rounded-lg transition-all duration-300 ${isSettingsOpen ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400' : 'bg-black/40 border-white/10 text-white/70 hover:bg-white/5 hover:text-white'}`}
+          >
+            <Settings2 size={16} />
+          </button>
+          
+          {/* Pills to show current configuration */}
+          <div className="flex items-center gap-1.5 ml-2 hidden sm:flex">
+            {(currentTimeSig.numerator !== 4 || currentTimeSig.denominator !== 4) && (
+              <span className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[10px] font-mono text-white/60">
+                {currentTimeSig.numerator}/{currentTimeSig.denominator}
+              </span>
+            )}
+            {currentBpm !== "AUTO" && (
+              <span className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[10px] font-mono text-white/60">
+                {currentBpm} BPM
+              </span>
+            )}
+            {currentTonality !== "AUTO" && (
+              <span className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[10px] font-mono text-white/60">
+                Tom: {currentTonality}
+              </span>
+            )}
+            {(!isRecorded && (currentBpm === "AUTO" || currentTonality === "AUTO")) && (
+              <span className="px-2 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-mono text-emerald-400/80">
+                Detecção Automática Ativa
+              </span>
+            )}
+          </div>
 
-        {/* BPM */}
-        <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-white/40 font-mono">
-            <Metronome size={12} />
-            BPM
-          </span>
-          <BpmInput bpm={bpm} setBpm={setBpm} />
-        </div>
+          {/* Settings Popup (Below the topbar) */}
+          {isSettingsOpen && (
+            <div 
+              ref={settingsRef}
+              className="absolute top-full mt-3 left-0 w-[480px] backdrop-blur-sm p-4 flex flex-col sm:flex-row gap-6 animate-fade-in origin-top z-50 shadow-2xl"
+              style={{
+                borderRadius: '20px',
+                border: '1px solid transparent',
+                backgroundImage: 'linear-gradient(90deg, rgba(10, 10, 10, 0.95) 0%), linear-gradient(135deg, rgba(32, 32, 32, 0.98) 0%, transparent 40%)',
+                backgroundOrigin: 'border-box',
+                backgroundClip: 'padding-box, border-box',
+                boxShadow: 'inset 0px 0px 5px -2px rgba(242,242,242,0.16)',
+              }}
+            >
+              {/* Time Signature */}
+              <div className="flex-1 flex flex-col gap-2 border-b sm:border-b-0 sm:border-r border-white/10 pb-4 sm:pb-0 sm:pr-6">
+                <span className="text-[10px] uppercase font-mono tracking-wider text-white/40 flex items-center gap-1.5">
+                  <Settings2 size={12} /> Fórmula de Compasso
+                </span>
+                <div className="flex items-center gap-4 mt-2">
+                  <div className="flex flex-col gap-1 w-full bg-black/40 rounded-lg p-1.5 border border-white/5">
+                    {NUMERATOR_OPTIONS.map((n) => (
+                      <button
+                        key={`num-${n}`}
+                        onClick={() => setAnyTimeSig({ ...currentTimeSig, numerator: n })}
+                        className={`py-1 text-xs font-medium rounded transition-colors ${currentTimeSig.numerator === n ? "bg-emerald-500/20 text-emerald-400" : "text-white/60 hover:bg-white/5 hover:text-white"}`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="text-white/20 text-lg font-light">/</span>
+                  <div className="flex flex-col gap-1 w-full bg-black/40 rounded-lg p-1.5 border border-white/5">
+                    {DENOMINATOR_OPTIONS.map((d) => (
+                      <button
+                        key={`den-${d}`}
+                        onClick={() => setAnyTimeSig({ ...currentTimeSig, denominator: d })}
+                        className={`py-1 text-xs font-medium rounded transition-colors ${currentTimeSig.denominator === d ? "bg-emerald-500/20 text-emerald-400" : "text-white/60 hover:bg-white/5 hover:text-white"}`}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
 
-        {/* Time Signature */}
-        <div className="flex items-center gap-1 ml-3 text-sm font-mono text-white bg-black/40 px-2 py-1 rounded-md border border-white/5">
-          <select value={qtValue} onChange={(e) => setQtValue(Number(e.target.value))} className="bg-transparent focus:outline-none appearance-none cursor-pointer text-center">
-            {QT_OPTIONS.map(q => <option key={q} value={q} className="bg-zinc-900">{q}</option>)}
-          </select>
-          <span className="text-white/30">/</span>
-          <select value={utValue} onChange={(e) => setUtValue(Number(e.target.value))} className="bg-transparent focus:outline-none appearance-none cursor-pointer text-center">
-            {UT_OPTIONS.map(u => <option key={u} value={u} className="bg-zinc-900">{u}</option>)}
-          </select>
-        </div>
+              {/* BPM */}
+              <div className="flex-1 flex flex-col gap-2 border-b sm:border-b-0 sm:border-r border-white/10 pb-4 sm:pb-0 sm:pr-6">
+                <span className="text-[10px] uppercase font-mono tracking-wider text-white/40 flex items-center gap-1.5">
+                  <Activity size={12} /> Velocidade
+                </span>
+                {!isRecorded && (
+                  <button
+                    onClick={() => setAnyBpm("AUTO")}
+                    className={`mt-2 w-full py-2 rounded-lg text-xs font-medium transition-colors border ${currentBpm === "AUTO" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" : "bg-black/40 border-white/5 text-white/60 hover:bg-white/5 hover:text-white"}`}
+                  >
+                    Auto-detectar
+                  </button>
+                )}
+                <div className="grid grid-cols-3 gap-1.5 mt-2">
+                  {COMMON_BPMS.map((b) => (
+                    <button
+                      key={`bpm-${b}`}
+                      onClick={() => setAnyBpm(b)}
+                      className={`py-1.5 rounded text-xs font-medium transition-colors ${currentBpm === b ? "bg-emerald-500/20 text-emerald-400" : "bg-black/40 text-white/60 hover:bg-white/5 hover:text-white"}`}
+                    >
+                      {b}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-        <div className="w-px h-6 bg-white/10 mx-3" />
-
-        {/* Tonality */}
-        <div className="flex items-center gap-2 ml-2 bg-black/40 px-2 py-1 rounded-md border border-white/5">
-          <span className="text-white/40 text-[10px] uppercase tracking-widest font-mono">TOM</span>
-          <select value={tonality} onChange={(e) => setTonality(e.target.value)} className="bg-transparent focus:outline-none appearance-none cursor-pointer text-sm font-mono text-white">
-            {ALL_TONALITIES.map(t => <option key={t.value} value={t.value} className="bg-zinc-900">{t.value}</option>)}
-          </select>
+              {/* Tonality */}
+              <div className="flex-1 flex flex-col gap-2">
+                <span className="text-[10px] uppercase font-mono tracking-wider text-white/40 flex items-center gap-1.5">
+                  <Music size={12} /> Tonalidade
+                </span>
+                {!isRecorded && (
+                  <button
+                    onClick={() => setAnyTonality("AUTO")}
+                    className={`mt-2 w-full py-2 rounded-lg text-xs font-medium transition-colors border ${currentTonality === "AUTO" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" : "bg-black/40 border-white/5 text-white/60 hover:bg-white/5 hover:text-white"}`}
+                  >
+                    Auto-detectar
+                  </button>
+                )}
+                <select
+                  value={currentTonality}
+                  onChange={(e) => setAnyTonality(e.target.value)}
+                  className={`mt-2 w-full bg-black/40 border rounded-lg py-2 px-3 text-xs font-medium focus:outline-none appearance-none cursor-pointer transition-colors ${currentTonality !== "AUTO" ? "border-emerald-500/50 text-emerald-400" : "border-white/5 text-white/60 hover:border-white/20"}`}
+                >
+                  {(!isRecorded && currentTonality === "AUTO") && <option value="AUTO" disabled>Selecionar...</option>}
+                  {ALL_TONALITIES.map(t => (
+                    <option key={t.value} value={t.value} className="bg-zinc-900 text-white">{t.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
         </div>
         
         <div className="flex-1" />

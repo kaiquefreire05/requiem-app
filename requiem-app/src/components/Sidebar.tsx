@@ -9,13 +9,13 @@ import {
   apiRenameSession,
   type ChatSession,
 } from '../lib/api';
-import requiemLogo from '../assets/requiem-logo-full.svg';
 
 interface SidebarProps {
   isSidebarOpen: boolean;
   setIsSidebarOpen: (isOpen: boolean) => void;
   activeSessionId: string | null;
   onSessionChange: (session: ChatSession | null) => void;
+  onSessionRename: (id: string, newTitle: string) => void;
   activeSession?: ChatSession | null;
 }
 
@@ -24,6 +24,7 @@ export function Sidebar({
   setIsSidebarOpen,
   activeSessionId,
   onSessionChange,
+  onSessionRename,
   activeSession,
 }: SidebarProps) {
   const { user, logout } = useAuth();
@@ -107,8 +108,10 @@ export function Sidebar({
       try {
         await apiRenameSession(id, trimmed);
         setSessions(prev => prev.map(s => s.id === id ? { ...s, title: trimmed } : s));
+        onSessionRename(id, trimmed);
       } catch {
         setSessions(prev => prev.map(s => s.id === id ? { ...s, title: trimmed } : s));
+        onSessionRename(id, trimmed);
       }
     }
     setRenamingId(null);

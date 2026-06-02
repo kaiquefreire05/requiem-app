@@ -8,6 +8,14 @@ export interface TrackHeadersProps {
   setMelodyInstrument: (v: InstrumentType) => void;
   chordsInstrument: InstrumentType;
   setChordsInstrument: (v: InstrumentType) => void;
+  melodyVolume: number;
+  setMelodyVolume: (v: number) => void;
+  melodyMuted: boolean;
+  setMelodyMuted: (v: boolean) => void;
+  chordsVolume: number;
+  setChordsVolume: (v: number) => void;
+  chordsMuted: boolean;
+  setChordsMuted: (v: boolean) => void;
 }
 
 const INSTRUMENT_OPTIONS: { value: InstrumentType; label: string; icon: React.ReactNode }[] = [
@@ -81,11 +89,16 @@ export function TrackHeaders({
   melodyInstrument,
   setMelodyInstrument,
   chordsInstrument,
-  setChordsInstrument
+  setChordsInstrument,
+  melodyVolume,
+  setMelodyVolume,
+  melodyMuted,
+  setMelodyMuted,
+  chordsVolume,
+  setChordsVolume,
+  chordsMuted,
+  setChordsMuted,
 }: TrackHeadersProps) {
-  // Dummy states for visual completeness
-  const [melodyMuted, setMelodyMuted] = useState(false);
-  const [chordsMuted, setChordsMuted] = useState(false);
 
   return (
     <div className="w-[220px] flex flex-col shrink-0 bg-[#131313] z-20 border-r border-white/5">
@@ -108,7 +121,14 @@ export function TrackHeaders({
           <InstrumentSelector value={melodyInstrument} onChange={setMelodyInstrument} />
 
           {/* Volume/Mute Controls */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
+            <input 
+              type="range" 
+              min="0" max="1" step="0.05"
+              value={melodyVolume}
+              onChange={(e) => setMelodyVolume(parseFloat(e.target.value))}
+              className="w-16 h-1 bg-white/20 rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2 [&::-webkit-slider-thumb]:h-2 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full"
+            />
             <button 
               onClick={() => setMelodyMuted(!melodyMuted)}
               className={`p-1.5 rounded-md transition-colors ${melodyMuted ? 'text-red-400 bg-red-400/10' : 'text-white/50 hover:bg-white/10 hover:text-white'}`}
@@ -136,7 +156,14 @@ export function TrackHeaders({
           <InstrumentSelector value={chordsInstrument} onChange={setChordsInstrument} />
 
           {/* Volume/Mute Controls */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
+            <input 
+              type="range" 
+              min="0" max="1" step="0.05"
+              value={chordsVolume}
+              onChange={(e) => setChordsVolume(parseFloat(e.target.value))}
+              className="w-16 h-1 bg-white/20 rounded-full appearance-none outline-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2 [&::-webkit-slider-thumb]:h-2 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full"
+            />
             <button 
               onClick={() => setChordsMuted(!chordsMuted)}
               className={`p-1.5 rounded-md transition-colors ${chordsMuted ? 'text-red-400 bg-red-400/10' : 'text-white/50 hover:bg-white/10 hover:text-white'}`}

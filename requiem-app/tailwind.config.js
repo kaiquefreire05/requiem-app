@@ -13,6 +13,7 @@ export default {
         'fade-in': 'fadeIn 0.4s ease-out forwards',
         'slide-up': 'slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards',
         'pulse-subtle': 'pulseSubtle 4s ease-in-out infinite',
+        'chord-pulse': 'chordPulse 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards',
       },
       keyframes: {
         aurora: {
@@ -31,6 +32,11 @@ export default {
         pulseSubtle: {
           '0%, 100%': { opacity: '1', filter: 'brightness(1)' },
           '50%': { opacity: '0.8', filter: 'brightness(0.85)' },
+        },
+        chordPulse: {
+          '0%': { transform: 'scale(0.85)', opacity: '0.3', filter: 'brightness(2)' },
+          '50%': { transform: 'scale(1.05)', opacity: '1', filter: 'brightness(1.5)' },
+          '100%': { transform: 'scale(1)', opacity: '1', filter: 'brightness(1)' },
         },
       }
     },

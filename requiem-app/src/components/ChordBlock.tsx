@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { ShieldCheck, Sparkles, Trash2 } from "lucide-react";
 import { ChordRoll } from "./ChordRoll";
-import { HARMONY_GRAPH, transitionMatrix } from "../engine/HarmonyEngine";
+import { HARMONY_GRAPH, markovModel } from "../engine/HarmonyEngine";
 import { chordToRoman, romanToChord } from "../engine/TonalityAdapter";
 
 export interface ChordBlockProps {
@@ -62,7 +62,10 @@ export function ChordBlock({
     const transitions = node.allowedTransitions || [];
     
     const prevRoman = chordToRoman(prevChord, tonality);
-    const probs = transitionMatrix[prevRoman] || {};
+    // Extrai a base pura caso o acorde atual tenha sufixo cinematográfico
+    const baseRomanMatch = prevRoman.match(/^([b#]?(?:III|iii|II|ii|IV|iv|VIII|viii|VII|vii|VI|vi|V|v|I|i))/);
+    const safePrevRoman = baseRomanMatch ? baseRomanMatch[1] : prevRoman;
+    const probs = markovModel.baseMatrix[safePrevRoman] || {};
     
     const dataList = Object.entries(probs)
       .filter(([r, p]) => p >= 0.05)
