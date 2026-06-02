@@ -8,14 +8,33 @@ export interface UseStringEngineReturn {
   playSequence: (ns: INoteSequence, startTimeOffset?: number, melodyInst?: InstrumentType, chordsInst?: InstrumentType) => Promise<void>;
   playFullArrangement: (blocks: { noteSequence?: INoteSequence; bpm: number }[], melodyInst?: InstrumentType, chordsInst?: InstrumentType) => Promise<void>;
   stop: () => void;
+  setTrackVolume: (track: number, vol: number) => void;
+  setTrackMute: (track: number, muted: boolean) => void;
 }
 
 export function useStringEngine(): UseStringEngineReturn {
   const [isLoaded, setIsLoaded] = useState(false);
   const pianoSynthRef = useRef<Tone.Sampler | null>(null);
-  const stringsSynthRef = useRef<Tone.PolySynth | null>(null);
+  const stringsSynthRef = useRef<Tone.Sampler | null>(null);
   const padSynthRef = useRef<Tone.PolySynth | null>(null);
   const reverbRef = useRef<Tone.Reverb | null>(null);
+
+  const volumesRef = useRef<{ [key: number]: number }>({ 0: 1, 1: 1 });
+  const mutesRef = useRef<{ [key: number]: boolean }>({ 0: false, 1: false });
+
+  const setTrackVolume = useCallback((track: number, vol: number) => {
+    volumesRef.current[track] = vol;
+  }, []);
+
+  const setTrackMute = useCallback((track: number, muted: boolean) => {
+    mutesRef.current[track] = muted;
+    // Se mutou agora e estava tocando, liberte o som para não ficar "preso"
+    if (muted) {
+      if (pianoSynthRef.current) pianoSynthRef.current.releaseAll();
+      if (stringsSynthRef.current) stringsSynthRef.current.releaseAll();
+      if (padSynthRef.current) padSynthRef.current.releaseAll();
+    }
+  }, []);
 
   useEffect(() => {
     // 1. Instanciar o Reverb comum para dar "espaço" a todos os synths
@@ -38,22 +57,21 @@ export function useStringEngine(): UseStringEngineReturn {
       },
       baseUrl: "https://tonejs.github.io/audio/salamander/",
       volume: 12,
-      onload: () => {
-        setIsLoaded(true);
-      },
     });
     pianoSynth.chain(reverb, Tone.Destination);
 
-    // 3. Instanciar STRINGS (PolySynth com ataque e release lentos)
-    const stringsSynth = new Tone.PolySynth(Tone.Synth, {
-      oscillator: { type: "sawtooth" },
-      envelope: {
-        attack: 0.6,
-        decay: 0.2,
-        sustain: 0.8,
-        release: 1.5,
+    // 3. Instanciar STRINGS (Sampler com Cello)
+    const stringsSynth = new Tone.Sampler({
+      urls: {
+        "A4": "A4.mp3",
+        "C4": "C4.mp3",
+        "E4": "E4.mp3",
+        "G4": "G4.mp3"
       },
-      volume: -8,
+      baseUrl: "https://nbrosowsky.github.io/tonejs-instruments/samples/cello/",
+      release: 1.5,
+      attack: 0.5,
+      volume: -4,
     });
     stringsSynth.chain(reverb, Tone.Destination);
 
@@ -80,7 +98,12 @@ export function useStringEngine(): UseStringEngineReturn {
     padSynthRef.current = padSynth;
     reverbRef.current = reverb;
 
-    // 5. Limpeza da memória
+    // 5. Aguardar todos os buffers (Piano e Strings) serem baixados
+    Tone.loaded().then(() => {
+      setIsLoaded(true);
+    });
+
+    // 6. Limpeza da memória
     return () => {
       pianoSynth.dispose();
       stringsSynth.dispose();
@@ -104,16 +127,26 @@ export function useStringEngine(): UseStringEngineReturn {
     if (!pianoSynthRef.current || !stringsSynthRef.current || !padSynthRef.current) return;
     
     // Identificar qual instrumento usar (0 = Melody, 1 = Chords)
-    const instType = note.instrument === 0 ? melodyInst : chordsInst;
+    const trackIndex = note.instrument === 0 ? 0 : 1;
+    
+    // Checar Mute
+    if (mutesRef.current[trackIndex]) return;
+
+    const instType = trackIndex === 0 ? melodyInst : chordsInst;
     let synth: Tone.Sampler | Tone.PolySynth = pianoSynthRef.current;
     
     if (instType === "strings") synth = stringsSynthRef.current;
     if (instType === "pad") synth = padSynthRef.current;
 
     const freq = Tone.Frequency(note.pitch, "midi").toNote();
-    const velocity = note.velocity != null ? note.velocity / 127 : (note.instrument === 0 ? 1 : 0.7);
     
-    synth.triggerAttackRelease(freq, duration, time, velocity);
+    // Calcular Velocity (Volume Base * Track Volume)
+    const baseVelocity = note.velocity != null ? note.velocity / 127 : (trackIndex === 0 ? 1 : 0.7);
+    const finalVelocity = baseVelocity * volumesRef.current[trackIndex];
+    
+    if (finalVelocity <= 0.01) return;
+    
+    synth.triggerAttackRelease(freq, duration, time, finalVelocity);
   };
 
   const playSequence = useCallback(
@@ -154,10 +187,6 @@ export function useStringEngine(): UseStringEngineReturn {
       blocks.forEach((block) => {
         if (!block.noteSequence) return;
         
-        Tone.Transport.schedule((time) => {
-          Tone.Transport.bpm.value = block.bpm;
-        }, `+${accumulatedTime}`);
-
         let maxEndTime = 0;
 
         block.noteSequence.notes?.forEach((note) => {
@@ -182,5 +211,5 @@ export function useStringEngine(): UseStringEngineReturn {
     [isLoaded, stop]
   );
 
-  return { isLoaded, playSequence, stop, playFullArrangement };
+  return { isLoaded, playSequence, stop, playFullArrangement, setTrackVolume, setTrackMute };
 }

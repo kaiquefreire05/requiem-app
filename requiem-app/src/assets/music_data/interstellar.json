@@ -1,5 +1,5 @@
 {
-  "title": "Interstellar (Main Theme) - Hans Zimmer",
+  "title": "Interstellar (Cornfield Chase) - Hans Zimmer",
   "originalTonality": "Am",
-  "normalizedProgression": ["F", "G", "Am", "G", "F", "G", "Am", "G"]
+  "normalizedProgression": ["Am", "Fmaj7", "Gadd9", "Em", "Amadd9"]
 }

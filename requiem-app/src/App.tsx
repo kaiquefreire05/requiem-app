@@ -23,6 +23,7 @@ import {
   getChordPitchClasses
 } from "./engine/TonalityAdapter";
 import { detectKey, estimateBPM } from "./engine/AudioAnalyzer";
+import { Starfield } from "./components/Starfield";
 
 // ─────────────────────────────────────────────────────────
 //  Máquina de Estados do fluxo principal
@@ -51,6 +52,7 @@ export interface CompositionBlock {
   key: string;
   bpm: number;
   timeSignature: string;
+  newlyGenerated?: boolean;
 }
 
 // ── Stale-closure-safe label map ────────────────────────
@@ -259,6 +261,11 @@ export default function App() {
   const [melodyInstrument, setMelodyInstrument] = useState<InstrumentType>("piano");
   const [chordsInstrument, setChordsInstrument] = useState<InstrumentType>("piano");
   
+  const [melodyVolume, setMelodyVolume] = useState(1);
+  const [melodyMuted, setMelodyMuted] = useState(false);
+  const [chordsVolume, setChordsVolume] = useState(1);
+  const [chordsMuted, setChordsMuted] = useState(false);
+  
   const [blocks, setBlocks] = useState<CompositionBlock[]>([
     { id: "1", name: "Verso 1", notes: [], progression: [], key: "C", bpm: 120, timeSignature: "4/4" }
   ]);
@@ -324,6 +331,10 @@ export default function App() {
     }
   }, []);
 
+  const handleSessionRename = useCallback((id: string, newTitle: string) => {
+    setActiveSession(prev => prev?.id === id ? { ...prev, title: newTitle } : prev);
+  }, []);
+
   // ── Refs ──────────────────────────────────────────────
   const appStateRef = useRef<AppState>("IDLE");
   const playingIndexRef = useRef<number | null>(null);
@@ -337,6 +348,17 @@ export default function App() {
   // ── Hooks personalizados ──────────────────────────────
   const pitchDetector = usePitchDetector();
   const stringEngine = useStringEngine();
+
+  // ── Sincronizar Volume/Mute com Engine ────────────────
+  useEffect(() => {
+    stringEngine.setTrackVolume(0, melodyVolume);
+    stringEngine.setTrackMute(0, melodyMuted);
+  }, [melodyVolume, melodyMuted, stringEngine]);
+
+  useEffect(() => {
+    stringEngine.setTrackVolume(1, chordsVolume);
+    stringEngine.setTrackMute(1, chordsMuted);
+  }, [chordsVolume, chordsMuted, stringEngine]);
 
   // ── Sincronizar Bloco Ativo com Global State ───────────
   useEffect(() => {
@@ -359,7 +381,7 @@ export default function App() {
   }, []);
 
   // ── Controle de Playback por item ─────────────────────
-  const playSequence = useCallback(async (index: number, seq: INoteSequence, offset: number = 0) => {
+  const playSequence = useCallback(async (index: number, seq: INoteSequence, offset: number = 0, melodyInst: InstrumentType = "piano", chordsInst: InstrumentType = "piano") => {
     try {
       if (playingIndexRef.current === index) {
         stringEngine.stop();
@@ -374,7 +396,7 @@ export default function App() {
       setPlayingIndex(index);
       playingIndexRef.current = index;
 
-      await stringEngine.playSequence(seq, offset);
+      await stringEngine.playSequence(seq, offset, melodyInst, chordsInst);
 
       // Calcular a duração aproximada para liberar o botão
       const totalDuration = seq.notes?.reduce((max, note) => Math.max(max, note.endTime || 0), 0) || 0;
@@ -559,7 +581,7 @@ export default function App() {
               if (!session) {
                 // Gera título musical único: "Am · Dm – G – C · 19:31"
                 const timeStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-                const chordPreview = progressionString.slice(0, 3).join(' – ');
+                const chordPreview = progression.map(p => p.chord).slice(0, 3).join(' – ');
                 const sessionTitle = `${detectedKey} · ${chordPreview} · ${timeStr}`;
 
                 const { session: newSession } = await apiCreateSession(sessionTitle);
@@ -613,7 +635,7 @@ export default function App() {
             bpm,
             utValue,
           );
-          return { ...b, progression: newProgression, noteSequence };
+          return { ...b, progression: newProgression, noteSequence, newlyGenerated: true };
         } catch (err) {
           console.error("Erro ao atualizar progressão:", err);
           return b;
@@ -651,44 +673,7 @@ export default function App() {
     }, 0);
   }, [bpm, utValue, activeBlockId, stringEngine]);
 
-  // ── Alterar Velocidade de Execução (BPM) ──────────────
-  useEffect(() => {
-    if (appState !== "IDLE") return;
-    if (recordedBpmRef.current === bpm) return;
-
-    const ratio = recordedBpmRef.current / bpm;
-    
-    setBlocks(prev => prev.map(b => {
-      if (b.notes.length === 0) return b;
-      
-      const scaledNotes = b.notes.map(n => ({
-        ...n,
-        startTime: n.startTime * ratio,
-        endTime: n.endTime * ratio
-      }));
-      
-      try {
-        const noteSequence = progressionToNoteSequence(
-          b.progression,
-          scaledNotes,
-          bpm,
-          utValue,
-        );
-        return { ...b, notes: scaledNotes, noteSequence };
-      } catch (err) {
-        return b;
-      }
-    }));
-    
-    recordedBpmRef.current = bpm;
-
-    if (playingIndexRef.current === 0) {
-       stringEngine.stop();
-       setPlayingIndex(null);
-       playingIndexRef.current = null;
-    }
-  }, [bpm, appState, qtValue, utValue, stringEngine]);
-
+  // O efeito colateral reativo de BPM foi removido para evitar estiramentos cumulativos da melodia.
 
   // ── Derivações visuais ────────────────────────────────
   const isActive = appState !== "IDLE";
@@ -704,16 +689,21 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeBlock?.noteSequence]);
 
-  const handleRecordAgain = useCallback(() => {
-    // Apaga apenas o bloco ativo
+  const handleStartRecording = useCallback(async () => {
+    // Apaga apenas o bloco ativo para regravar do zero e remove a flag de animação
     setBlocks(prev => prev.map(b => 
-      b.id === activeBlockId ? { ...b, notes: [], progression: [], noteSequence: undefined } : b
+      b.id === activeBlockId ? { ...b, notes: [], progression: [], noteSequence: undefined, newlyGenerated: false } : b
     ));
     setActiveTab("vibe");
-    setAppState("IDLE");
-  }, [activeBlockId]);
+    
+    if (appStateRef.current === "IDLE") {
+      setAppState("RECORDING");
+      await pitchDetector.prepareListening();
+      pitchDetector.startRecording();
+    }
+  }, [activeBlockId, pitchDetector]);
 
-  const handleAddBlock = useCallback(async () => {
+  const handleAddBlock = useCallback(() => {
     const id = Date.now().toString();
     const newBlock: CompositionBlock = {
       id,
@@ -726,14 +716,7 @@ export default function App() {
     };
     setBlocks(prev => [...prev, newBlock]);
     setActiveBlockId(id);
-    
-    // Inicia gravação In-Place
-    if (appStateRef.current === "IDLE") {
-      setAppState("RECORDING");
-      await pitchDetector.prepareListening();
-      pitchDetector.startRecording();
-    }
-  }, [blocks.length, pitchDetector]);
+  }, [blocks.length, preRecordTimeSignature]);
 
   const handleRemoveBlock = useCallback((idToRemove: string) => {
     setBlocks(prev => {
@@ -752,9 +735,64 @@ export default function App() {
 
   // Setters que também atualizam o bloco atual
   const handleSetBpm = useCallback((newBpm: number) => {
+    setBlocks(prev => {
+      const nextBlocks = prev.map(b => {
+        if (b.id !== activeBlockId || b.notes.length === 0) return { ...b, bpm: b.id === activeBlockId ? newBpm : b.bpm };
+        
+        const ratio = b.bpm / newBpm;
+        const scaledNotes = b.notes.map(n => ({
+          ...n,
+          startTime: n.startTime * ratio,
+          endTime: n.endTime * ratio
+        }));
+        
+        const bUt = parseInt(b.timeSignature.split('/')[1] || '4');
+        
+        try {
+          const noteSequence = progressionToNoteSequence(
+            b.progression,
+            scaledNotes,
+            newBpm,
+            bUt
+          );
+          return { ...b, bpm: newBpm, notes: scaledNotes, noteSequence };
+        } catch (err) {
+          return { ...b, bpm: newBpm };
+        }
+      });
+      
+      // Auto-save no backend após escalar a melodia
+      setTimeout(async () => {
+        const session = activeSessionRef.current;
+        if (!session) return;
+        try {
+          const serialized: SerializedBlock[] = nextBlocks.map(blk => ({
+            id: blk.id,
+            name: blk.name,
+            notes: blk.notes,
+            progression: blk.progression,
+            key: blk.key,
+            bpm: blk.bpm,
+            timeSignature: blk.timeSignature,
+          }));
+          await apiSaveComposition(session.id, serialized);
+        } catch (e) {
+          console.warn('[Requiem] Auto-save falhou:', e);
+        }
+      }, 0);
+      
+      return nextBlocks;
+    });
+
     setBpm(newBpm);
-    setBlocks(prev => prev.map(b => b.id === activeBlockId ? { ...b, bpm: newBpm } : b));
-  }, [activeBlockId]);
+    recordedBpmRef.current = newBpm;
+    
+    if (playingIndexRef.current === 0) {
+       stringEngine.stop();
+       setPlayingIndex(null);
+       playingIndexRef.current = null;
+    }
+  }, [activeBlockId, stringEngine]);
 
   const handleSetQtValue = useCallback((newQt: number) => {
     setQtValue(newQt);
@@ -801,12 +839,16 @@ export default function App() {
         setIsSidebarOpen={setIsSidebarOpen}
         activeSessionId={activeSession?.id ?? null}
         onSessionChange={handleSessionChange}
+        onSessionRename={handleSessionRename}
         activeSession={activeSession}
       />
 
       {/* ─── VIBE VIEW ─── */}
       {activeTab === "vibe" && (
         <main className="relative flex-1 flex flex-col justify-between p-8 overflow-hidden bg-black">
+
+          {/* Unified Animated/Static Stars Background */}
+          <Starfield animated={appState === "PROCESSING"} numStars={250} />
 
           {/* Corpo Central */}
           <div className="relative z-10 flex flex-col flex-1 items-center justify-center text-center overflow-hidden">
@@ -886,10 +928,15 @@ export default function App() {
       {activeTab === "studio" && activeBlock && (
         <main className="flex-1 flex flex-col overflow-hidden">
           <StudioView
+            compositionName={activeSession?.title || "Nova Composição"}
             blocks={blocks}
             activeBlockId={activeBlockId}
-            onActiveBlockChange={setActiveBlockId}
-            onAddBlock={handleAddBlock}
+            onActiveBlockChange={(id) => {
+            setActiveBlockId(id);
+            // Ao trocar de bloco manualmente, remova a flag newlyGenerated do bloco novo (se houver) para não re-animar
+            setBlocks(prev => prev.map(b => b.id === id && b.newlyGenerated ? { ...b, newlyGenerated: false } : b));
+          }}
+          onAddBlock={handleAddBlock}
             onRemoveBlock={handleRemoveBlock}
             onRenameBlock={handleRenameBlock}
             appState={appState}
@@ -915,13 +962,28 @@ export default function App() {
               playingIndexRef.current = null;
             }}
             onUpdateProgression={handleUpdateProgression}
-            onRecordAgain={handleRecordAgain}
+            onStartRecording={handleStartRecording}
             onReorderBlocks={setBlocks}
             onPlayArrangement={() => stringEngine.playFullArrangement(blocks, melodyInstrument, chordsInstrument)}
             melodyInstrument={melodyInstrument}
             setMelodyInstrument={setMelodyInstrument}
             chordsInstrument={chordsInstrument}
             setChordsInstrument={setChordsInstrument}
+            melodyVolume={melodyVolume}
+            setMelodyVolume={setMelodyVolume}
+            melodyMuted={melodyMuted}
+            setMelodyMuted={setMelodyMuted}
+            chordsVolume={chordsVolume}
+            setChordsVolume={setChordsVolume}
+            chordsMuted={chordsMuted}
+            setChordsMuted={setChordsMuted}
+            isRecorded={activeBlock ? activeBlock.notes.length > 0 : false}
+            preRecordBpm={preRecordBpm}
+            setPreRecordBpm={setPreRecordBpm}
+            preRecordTonality={preRecordTonality}
+            setPreRecordTonality={setPreRecordTonality}
+            preRecordTimeSignature={preRecordTimeSignature}
+            setPreRecordTimeSignature={setPreRecordTimeSignature}
           />
         </main>
       )}

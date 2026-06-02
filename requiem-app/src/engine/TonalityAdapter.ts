@@ -351,12 +351,36 @@ export const getChordPitchClasses = (chordName: string): number[] => {
   const rootIndex = ROOT_OFFSETS[parsed.root] ?? 0;
   let intervals = [0, 4, 7]; // Major padrão
 
-  // O sufixo determina os intervalos a partir da fundamental
-  if (parsed.suffix.startsWith("dim")) intervals = [0, 3, 6];
-  else if (parsed.suffix.startsWith("m7")) intervals = [0, 3, 7, 10];
-  else if (parsed.suffix.startsWith("maj7")) intervals = [0, 4, 7, 11];
-  else if (parsed.suffix.startsWith("m")) intervals = [0, 3, 7];
-  else if (parsed.suffix.startsWith("7")) intervals = [0, 4, 7, 10];
+  // Dicionário modular de sufixos e seus respectivos intervalos em semitons
+  const SUFFIX_DICT: Record<string, number[]> = {
+    "": [0, 4, 7],            // Major triad
+    "m": [0, 3, 7],           // Minor triad
+    "dim": [0, 3, 6],         // Diminished triad
+    "aug": [0, 4, 8],         // Augmented triad
+    "+": [0, 4, 8],           // Augmented (alias)
+    "sus4": [0, 5, 7],        // Suspended 4th
+    "sus2": [0, 2, 7],        // Suspended 2nd
+    "5": [0, 7],              // Power chord
+    "maj7": [0, 4, 7, 11],    // Major 7th
+    "7": [0, 4, 7, 10],       // Dominant 7th
+    "m7": [0, 3, 7, 10],      // Minor 7th
+    "m7b5": [0, 3, 6, 10],    // Half-diminished 7th
+    "dim7": [0, 3, 6, 9],     // Fully diminished 7th
+    "add9": [0, 4, 7, 2],     // Major add9 (9th is 2 modulo 12)
+    "madd9": [0, 3, 7, 2],    // Minor add9
+    "sus4add9": [0, 5, 7, 2], // Sus4 add9 (cinematic staple)
+    "11": [0, 4, 7, 10, 2, 5],// Dominant 11th
+    "m11": [0, 3, 7, 10, 2, 5]// Minor 11th
+  };
+
+  // Aplica os intervalos baseados no sufixo exato, com fallback inteligente
+  if (SUFFIX_DICT[parsed.suffix]) {
+    intervals = SUFFIX_DICT[parsed.suffix];
+  } else if (parsed.suffix.startsWith("m") && !parsed.suffix.startsWith("maj")) {
+    intervals = [0, 3, 7]; // Fallback genérico para acordes menores não mapeados
+  } else if (parsed.suffix.startsWith("sus")) {
+    intervals = [0, 5, 7]; // Fallback genérico para sus
+  }
   
   return intervals.map(interval => (rootIndex + interval) % 12);
 };

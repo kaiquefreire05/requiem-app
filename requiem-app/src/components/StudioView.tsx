@@ -5,6 +5,7 @@ import { PianoRoll } from "./PianoRoll";
 import { TopBar } from "./TopBar";
 import { TrackHeaders } from "./TrackHeaders";
 import { ChordBlock } from "./ChordBlock";
+import type { TimeSignature } from "./TimeSignatureSelector";
 
 // ─────────────────────────────────────────────────────────
 //  Constantes do Piano Roll
@@ -17,6 +18,7 @@ import type { CompositionBlock, ChordSegment, InstrumentType } from "../App";
 //  Tipos
 // ─────────────────────────────────────────────────────────
 interface StudioViewProps {
+  compositionName: string;
   blocks: CompositionBlock[];
   activeBlockId: string;
   onActiveBlockChange: (id: string) => void;
@@ -40,19 +42,35 @@ interface StudioViewProps {
   isPlaying: boolean;
   onPlay: (time?: number) => void;
   onStop: () => void;
-  onRecordAgain?: () => void;
+  onStartRecording?: () => void;
   onReorderBlocks: (newBlocks: CompositionBlock[]) => void;
   onPlayArrangement: () => void;
   melodyInstrument: InstrumentType;
   setMelodyInstrument: (v: InstrumentType) => void;
   chordsInstrument: InstrumentType;
   setChordsInstrument: (v: InstrumentType) => void;
+  melodyVolume: number;
+  setMelodyVolume: (v: number) => void;
+  melodyMuted: boolean;
+  setMelodyMuted: (v: boolean) => void;
+  chordsVolume: number;
+  setChordsVolume: (v: number) => void;
+  chordsMuted: boolean;
+  setChordsMuted: (v: boolean) => void;
+  isRecorded: boolean;
+  preRecordBpm: number | "AUTO";
+  setPreRecordBpm: (val: number | "AUTO") => void;
+  preRecordTonality: string;
+  setPreRecordTonality: (val: string) => void;
+  preRecordTimeSignature: TimeSignature;
+  setPreRecordTimeSignature: (val: TimeSignature) => void;
 }
 
 // ─────────────────────────────────────────────────────────
 //  Componente Principal: StudioView
 // ─────────────────────────────────────────────────────────
 export function StudioView({
+  compositionName,
   blocks,
   activeBlockId,
   onActiveBlockChange,
@@ -76,13 +94,28 @@ export function StudioView({
   tonality,
   setTonality,
   onUpdateProgression,
-  onRecordAgain,
+  onStartRecording,
   onReorderBlocks,
   onPlayArrangement,
   melodyInstrument,
   setMelodyInstrument,
   chordsInstrument,
   setChordsInstrument,
+  melodyVolume,
+  setMelodyVolume,
+  melodyMuted,
+  setMelodyMuted,
+  chordsVolume,
+  setChordsVolume,
+  chordsMuted,
+  setChordsMuted,
+  isRecorded,
+  preRecordBpm,
+  setPreRecordBpm,
+  preRecordTonality,
+  setPreRecordTonality,
+  preRecordTimeSignature,
+  setPreRecordTimeSignature,
 }: StudioViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   
@@ -278,7 +311,7 @@ export function StudioView({
       {/* ── Central Area (Session) ── */}
       <div className="flex-1 flex flex-col overflow-hidden relative">
         <TopBar 
-          onRecordAgain={onRecordAgain}
+          onStartRecording={onStartRecording}
           isPlaying={isPlaying}
           time={time}
           onPlay={onPlay}
@@ -295,6 +328,13 @@ export function StudioView({
           setTonality={setTonality}
           isSceneBarOpen={isSidebarOpen}
           toggleSceneBar={() => setIsSidebarOpen(!isSidebarOpen)}
+          isRecorded={isRecorded}
+          preRecordBpm={preRecordBpm}
+          setPreRecordBpm={setPreRecordBpm}
+          preRecordTonality={preRecordTonality}
+          setPreRecordTonality={setPreRecordTonality}
+          preRecordTimeSignature={preRecordTimeSignature}
+          setPreRecordTimeSignature={setPreRecordTimeSignature}
         />
 
         <div className="flex flex-1 overflow-hidden">
@@ -305,6 +345,14 @@ export function StudioView({
             setMelodyInstrument={setMelodyInstrument}
             chordsInstrument={chordsInstrument}
             setChordsInstrument={setChordsInstrument}
+            melodyVolume={melodyVolume}
+            setMelodyVolume={setMelodyVolume}
+            melodyMuted={melodyMuted}
+            setMelodyMuted={setMelodyMuted}
+            chordsVolume={chordsVolume}
+            setChordsVolume={setChordsVolume}
+            chordsMuted={chordsMuted}
+            setChordsMuted={setChordsMuted}
           />
 
           {/* ── Timeline Area (Right Column) ── */}
@@ -400,34 +448,43 @@ export function StudioView({
                     let currentBeats = 0;
                     
                     const elements = displayProgression.map((chordObj, i) => {
-                      const left = currentBeats * pxPerBeat;
+                      const currentLeft = currentBeats * pxPerBeat;
                       const width = chordObj.durationBeats * pxPerBeat;
+                      const activeBlock = blocks.find(b => b.id === activeBlockId);
+                      const isNewlyGenerated = activeBlock?.newlyGenerated;
                       currentBeats += chordObj.durationBeats;
                       
                       return (
-                        <ChordBlock
-                          key={chordObj.id}
-                          chord={chordObj.chord}
-                          left={left}
-                          width={width}
-                          tonality={tonality}
-                          prevChord={i > 0 ? displayProgression[i - 1].chord : tonality}
-                          onReplace={(newChord) => {
-                            const newProg = [...displayProgression];
-                            newProg[i] = { ...newProg[i], chord: newChord };
-                            onUpdateProgression(newProg);
+                        <div 
+                          key={`${chordObj.id}-${i}`}
+                          className={`absolute h-[60px] top-4 shrink-0 transition-all ${isNewlyGenerated ? 'animate-chord-pulse' : ''}`}
+                          style={{ 
+                            left: `${currentLeft}px`,
+                            animationDelay: isNewlyGenerated ? `${i * 0.05}s` : '0s'
                           }}
-                          onResizeStart={(e, dir) => handleResizeStart(e, dir, i)}
-                          draggable
-                          onDragStart={() => handleDragStart(i)}
-                          onDragOver={handleDragOver}
-                          onDrop={(e) => handleDrop(e, i)}
-                          onRemove={() => {
-                            const newProg = [...displayProgression];
-                            newProg.splice(i, 1);
-                            onUpdateProgression(newProg);
-                          }}
-                        />
+                        >
+                          <ChordBlock
+                            chord={chordObj.chord}
+                            width={width}
+                            tonality={tonality}
+                            prevChord={i > 0 ? displayProgression[i - 1].chord : tonality}
+                            onReplace={(newChord) => {
+                              const newProg = [...displayProgression];
+                              newProg[i] = { ...newProg[i], chord: newChord };
+                              onUpdateProgression(newProg);
+                            }}
+                            onResizeStart={(e, dir) => handleResizeStart(e, dir, i)}
+                            draggable
+                            onDragStart={() => handleDragStart(i)}
+                            onDragOver={handleDragOver}
+                            onDrop={(e) => handleDrop(e, i)}
+                            onRemove={() => {
+                              const newProg = [...displayProgression];
+                              newProg.splice(i, 1);
+                              onUpdateProgression(newProg);
+                            }}
+                          />
+                        </div>
                       );
                     });
 
@@ -472,13 +529,13 @@ export function StudioView({
         {/* Capa do Álbum */}
         <div className="relative w-full aspect-square shrink-0">
           <img 
-            src="https://image.pollinations.ai/prompt/ethereal%20space%20nebula%20dark%20aesthetic%20music%20cover?width=512&height=512&nologo=true&seed=42" 
+            src={`https://image.pollinations.ai/prompt/${encodeURIComponent(compositionName)}?width=512&height=512&nologo=true&seed=42`}
             alt="Album Cover" 
             className="w-full h-full object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
           <h2 className="absolute bottom-4 left-4 right-4 text-xl font-bold tracking-tight text-white drop-shadow-md">
-            Requiem Opus 1
+            {compositionName}
           </h2>
         </div>
 
