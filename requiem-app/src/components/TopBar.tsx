@@ -104,16 +104,20 @@ export function TopBar({
   return (
     <div className="w-full h-[52px] bg-[#1a1a1a] flex items-center justify-between px-4 shrink-0 shadow-md z-50 relative">
       <div className="flex-1 flex justify-start">
-        <button 
-          onClick={onStartRecording}
-          className="flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold text-red-500 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 transition-all hover:scale-[1.02]"
-        >
-          <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse-subtle" />
-          <span>GRAVAR</span>
-        </button>
+        {/* Espaço reservado à esquerda para manter o centro alinhado */}
       </div>
 
-      <div className="flex items-center justify-center gap-1">
+      <div className="flex items-center justify-center gap-2">
+        {/* Record Button */}
+        <div className="bg-black/20 rounded-lg p-1 flex items-center justify-center">
+          <button 
+            onClick={onStartRecording}
+            className="p-1.5 rounded-md hover:bg-white/5 transition-colors flex items-center justify-center"
+            title="Gravar"
+          >
+            <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse-subtle" />
+          </button>
+        </div>
         {/* Transport Controls */}
         <div className="flex items-center gap-1 bg-black/20 rounded-lg p-1">
           <button onClick={handleSkipBack} className="p-1.5 rounded-md text-white/50 hover:text-white hover:bg-white/5 transition-colors"><SkipBack size={16} /></button>

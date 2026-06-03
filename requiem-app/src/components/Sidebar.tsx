@@ -163,7 +163,11 @@ export function Sidebar({
         <div className={`ml-2 flex items-center overflow-hidden transition-opacity duration-300 ${
           isSidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0'
         }`}>
-          <img src={requiemLogo} alt="Requiem Logo" className="h-7 w-auto drop-shadow-[0_0_8px_rgba(220,38,38,0.5)]" />
+          <img 
+            src={requiemLogo} 
+            alt="Requiem Logo" 
+            className="h-7 w-auto drop-shadow-[0_0_8px_rgba(220,38,38,0.5)]" 
+          />
         </div>
       </div>
 
@@ -175,7 +179,7 @@ export function Sidebar({
             isSidebarOpen ? 'w-full rounded-2xl' : 'w-11 justify-center'
           }`}
         >
-          <svg className="w-5 h-5 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 text-white/70 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
           </svg>
           <span className={`ml-3 text-sm font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${
@@ -222,7 +226,7 @@ export function Sidebar({
                                 if (e.key === 'Enter') handleCommitRename(session.id);
                                 if (e.key === 'Escape') setRenamingId(null);
                               }}
-                              className="w-full px-3 py-2 text-sm text-white bg-white/10 border border-red-500/40 rounded-lg outline-none"
+                              className="w-full px-3 py-2 text-sm text-white bg-white/10 border border-white/20 rounded-lg outline-none"
                             />
                           ) : (
                             <button
@@ -242,7 +246,7 @@ export function Sidebar({
                               {/* Delete button (hover) */}
                               <button
                                 onClick={e => handleDeleteSession(e, session.id)}
-                                className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:text-red-400 ml-1 flex-shrink-0"
+                                className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:text-white ml-1 flex-shrink-0 text-white/40"
                                 title="Excluir"
                               >
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -310,7 +314,7 @@ export function Sidebar({
             </div>
             <button
               onClick={logout}
-              className="flex items-center gap-2 w-full px-3 py-2.5 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+              className="flex items-center gap-2 w-full px-3 py-2.5 text-sm text-white/70 hover:bg-white/10 hover:text-white transition-colors"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />

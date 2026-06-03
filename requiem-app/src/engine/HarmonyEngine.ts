@@ -158,7 +158,7 @@ const extractTwoTierDataset = (modules: Record<string, ProgressionData>): TwoTie
 
 export const buildTwoTierMarkovModel = (datasets: TwoTierDatasets): TwoTierMarkovModel => {
   const { baseProgressions, suffixData } = datasets;
-  const ALPHA = 0.1;
+  const ALPHA = 0.01;
 
   // -- Matriz Base --
   const baseCounts: Record<string, Record<string, number>> = {};
@@ -312,6 +312,7 @@ export function determineNextChord(
   windowStart: number,
   secondsPerBeat: number,
   model: TwoTierMarkovModel = markovModel,
+  isReroll: boolean = false
 ): { chord: string, velocity: number } {
   const currentChord = chordHistory.length > 0 ? chordHistory[chordHistory.length - 1] : "C";
 
@@ -357,8 +358,7 @@ export function determineNextChord(
   const allExtensionsArray = Object.keys(model.suffixMatrix[currRoman] || { "none": 1 });
   if (allExtensionsArray.length === 0) allExtensionsArray.push("none");
 
-  let bestChord = currentChord;
-  let bestScore = -Infinity;
+  const candidates: { chord: string, score: number }[] = [];
 
   for (const candidateBaseName of allBaseCandidates) {
     const candidateRoman = chordToRoman(candidateBaseName, "C");
@@ -399,12 +399,29 @@ export function determineNextChord(
         avgAmplitude
       );
 
-      const finalScore = (noteScore * 1.0) + (combinedStyleProb * WEIGHT_MARKOV);
+      // Penaliza acordes com mais de 3 notas (tríades) para forçar clareza, a menos que a melodia exija a extensão
+      const complexityPenalty = Math.max(0, fullChordNotes.length - 3) * 2.5;
 
-      if (finalScore > bestScore) {
-        bestScore = finalScore;
-        bestChord = fullChordName;
-      }
+      const finalScore = (noteScore * 1.0) + (combinedStyleProb * WEIGHT_MARKOV) - complexityPenalty;
+
+      candidates.push({ chord: fullChordName, score: finalScore });
+    }
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+  
+  let bestChord = currentChord;
+  
+  if (candidates.length > 0) {
+    if (isReroll && candidates.length >= 2) {
+      const poolSize = Math.min(3, candidates.length);
+      // Ponderação Simples: 50% pro 1º, 30% pro 2º, 20% pro 3º
+      const rand = Math.random();
+      if (rand < 0.5) bestChord = candidates[0].chord;
+      else if (rand < 0.8 && poolSize > 1) bestChord = candidates[1].chord;
+      else bestChord = candidates[poolSize - 1].chord;
+    } else {
+      bestChord = candidates[0].chord;
     }
   }
 
@@ -423,6 +440,7 @@ export function generateProgression(
   timeSignatureDenominator: number,
   startChord: string = "C",
   model: TwoTierMarkovModel = markovModel,
+  isReroll: boolean = false
 ): readonly { chord: string, velocity: number }[] {
   if (playedNotes.length === 0) return [{ chord: startChord, velocity: 0.7 }];
 
@@ -457,7 +475,8 @@ export function generateProgression(
       clippedNotes,
       windowStart,
       secondsPerBeat,
-      model
+      model,
+      isReroll
     );
     progression.push(result);
     history.push(result.chord);

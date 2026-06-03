@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import requiemLogo from '../assets/requiem-logo-full.svg';
+import { Starfield } from './Starfield';
 
 type AuthMode = 'login' | 'register';
 
@@ -12,81 +13,6 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  // Animated particle background
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let animId: number;
-    const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    };
-    resize();
-    window.addEventListener('resize', resize);
-
-    const PARTICLE_COUNT = 60;
-    type Particle = {
-      x: number; y: number; vx: number; vy: number;
-      radius: number; opacity: number; hue: number;
-    };
-    const particles: Particle[] = Array.from({ length: PARTICLE_COUNT }, () => ({
-      x: Math.random() * canvas.width,
-      y: Math.random() * canvas.height,
-      vx: (Math.random() - 0.5) * 0.4,
-      vy: (Math.random() - 0.5) * 0.4,
-      radius: Math.random() * 2 + 0.5,
-      opacity: Math.random() * 0.4 + 0.05,
-      hue: Math.random() < 0.5 ? 0 : 220, // red or blue
-    }));
-
-    const animate = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // Draw connections
-      for (let i = 0; i < particles.length; i++) {
-        for (let j = i + 1; j < particles.length; j++) {
-          const dx = particles[i].x - particles[j].x;
-          const dy = particles[i].y - particles[j].y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < 120) {
-            ctx.beginPath();
-            ctx.moveTo(particles[i].x, particles[i].y);
-            ctx.lineTo(particles[j].x, particles[j].y);
-            ctx.strokeStyle = `rgba(180, 50, 50, ${(1 - dist / 120) * 0.08})`;
-            ctx.lineWidth = 0.5;
-            ctx.stroke();
-          }
-        }
-      }
-
-      // Draw & move particles
-      for (const p of particles) {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-        ctx.fillStyle = `hsla(${p.hue}, 80%, 65%, ${p.opacity})`;
-        ctx.fill();
-        p.x += p.vx;
-        p.y += p.vy;
-        if (p.x < 0) p.x = canvas.width;
-        if (p.x > canvas.width) p.x = 0;
-        if (p.y < 0) p.y = canvas.height;
-        if (p.y > canvas.height) p.y = 0;
-      }
-
-      animId = requestAnimationFrame(animate);
-    };
-    animate();
-
-    return () => {
-      cancelAnimationFrame(animId);
-      window.removeEventListener('resize', resize);
-    };
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,13 +41,13 @@ export function LoginPage() {
 
   return (
     <div className="relative min-h-screen w-full bg-black flex items-center justify-center overflow-hidden">
-      {/* Animated canvas background */}
-      <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" />
+      {/* Animated starfield background */}
+      <Starfield animated={true} numStars={250} />
 
       {/* Radial gradient glow */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-red-900/10 blur-[120px]" />
-        <div className="absolute bottom-1/4 left-1/4 w-[300px] h-[300px] rounded-full bg-red-950/20 blur-[80px]" />
+        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-white/5 blur-[120px]" />
+        <div className="absolute bottom-1/4 left-1/4 w-[300px] h-[300px] rounded-full bg-white/5 blur-[80px]" />
       </div>
 
       {/* Card */}
@@ -141,11 +67,11 @@ export function LoginPage() {
             background: 'rgba(15, 15, 18, 0.85)',
             backdropFilter: 'blur(24px)',
             border: '1px solid rgba(255,255,255,0.07)',
-            boxShadow: '0 25px 50px rgba(0,0,0,0.8), 0 0 0 1px rgba(220,38,38,0.05) inset',
+            boxShadow: '0 25px 50px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.05) inset',
           }}
         >
           {/* Top accent line */}
-          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-red-600/40 to-transparent" />
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
 
           <div className="p-8">
             {/* Header */}
@@ -180,8 +106,8 @@ export function LoginPage() {
                       border: '1px solid rgba(255,255,255,0.08)',
                     }}
                     onFocus={e => {
-                      e.target.style.border = '1px solid rgba(220,38,38,0.5)';
-                      e.target.style.boxShadow = '0 0 0 3px rgba(220,38,38,0.1)';
+                      e.target.style.border = '1px solid rgba(255,255,255,0.3)';
+                      e.target.style.boxShadow = '0 0 0 3px rgba(255,255,255,0.05)';
                     }}
                     onBlur={e => {
                       e.target.style.border = '1px solid rgba(255,255,255,0.08)';
@@ -208,8 +134,8 @@ export function LoginPage() {
                     border: '1px solid rgba(255,255,255,0.08)',
                   }}
                   onFocus={e => {
-                    e.target.style.border = '1px solid rgba(220,38,38,0.5)';
-                    e.target.style.boxShadow = '0 0 0 3px rgba(220,38,38,0.1)';
+                    e.target.style.border = '1px solid rgba(255,255,255,0.3)';
+                    e.target.style.boxShadow = '0 0 0 3px rgba(255,255,255,0.05)';
                   }}
                   onBlur={e => {
                     e.target.style.border = '1px solid rgba(255,255,255,0.08)';
@@ -235,8 +161,8 @@ export function LoginPage() {
                     border: '1px solid rgba(255,255,255,0.08)',
                   }}
                   onFocus={e => {
-                    e.target.style.border = '1px solid rgba(220,38,38,0.5)';
-                    e.target.style.boxShadow = '0 0 0 3px rgba(220,38,38,0.1)';
+                    e.target.style.border = '1px solid rgba(255,255,255,0.3)';
+                    e.target.style.boxShadow = '0 0 0 3px rgba(255,255,255,0.05)';
                   }}
                   onBlur={e => {
                     e.target.style.border = '1px solid rgba(255,255,255,0.08)';
@@ -260,12 +186,9 @@ export function LoginPage() {
                 id="auth-submit"
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-3 rounded-xl font-semibold text-sm text-white transition-all duration-200 relative overflow-hidden mt-2"
+                className="w-full py-3 rounded-xl font-bold text-sm text-black bg-white hover:bg-gray-100 transition-all duration-200 relative overflow-hidden mt-2"
                 style={{
-                  background: isLoading
-                    ? 'rgba(220,38,38,0.4)'
-                    : 'linear-gradient(135deg, #dc2626, #b91c1c)',
-                  boxShadow: isLoading ? 'none' : '0 4px 20px rgba(220,38,38,0.35)',
+                  boxShadow: isLoading ? 'none' : '0 4px 20px rgba(255,255,255,0.2)',
                 }}
               >
                 {isLoading ? (
@@ -289,7 +212,7 @@ export function LoginPage() {
               </span>{' '}
               <button
                 onClick={switchMode}
-                className="text-red-400 hover:text-red-300 text-sm font-medium transition-colors"
+                className="text-white/70 hover:text-white text-sm font-medium transition-colors"
               >
                 {mode === 'login' ? 'Criar conta' : 'Entrar'}
               </button>

@@ -335,10 +335,10 @@ export default function App() {
     setActiveSession(prev => prev?.id === id ? { ...prev, title: newTitle } : prev);
   }, []);
 
-  // ── Refs ──────────────────────────────────────────────
   const appStateRef = useRef<AppState>("IDLE");
   const playingIndexRef = useRef<number | null>(null);
   const recordedBpmRef = useRef<number>(120);
+  const arrangementTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   // Manter ref sincronizado com state (para closures)
   useEffect(() => {
@@ -383,6 +383,9 @@ export default function App() {
   // ── Controle de Playback por item ─────────────────────
   const playSequence = useCallback(async (index: number, seq: INoteSequence, offset: number = 0, melodyInst: InstrumentType = "piano", chordsInst: InstrumentType = "piano") => {
     try {
+      arrangementTimeoutsRef.current.forEach(clearTimeout);
+      arrangementTimeoutsRef.current = [];
+
       if (playingIndexRef.current === index) {
         stringEngine.stop();
         setPlayingIndex(null);
@@ -673,6 +676,51 @@ export default function App() {
     }, 0);
   }, [bpm, utValue, activeBlockId, stringEngine]);
 
+  // ── Reroll Progressão ─────────────────────────────────
+  const handleRerollProgression = useCallback(async () => {
+    const block = blocks.find(b => b.id === activeBlockId);
+    if (!block || block.notes.length === 0) return;
+
+    setAppState("PROCESSING");
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    try {
+      const num = parseInt(block.timeSignature.split('/')[0]) || 4;
+      const den = parseInt(block.timeSignature.split('/')[1]) || 4;
+      
+      const normalizedNotes = normalizeNotes(block.notes, block.key);
+      
+      const rawProgression = generateProgression(
+        normalizedNotes,
+        block.bpm,
+        num,
+        num,
+        den,
+        "C",
+        undefined,
+        true // isReroll = true
+      );
+
+      const transposedProgression = rawProgression.map(item => ({
+        chord: transposeProgression([item.chord], block.key)[0],
+        velocity: item.velocity
+      }));
+      
+      const newProgression: ChordSegment[] = transposedProgression.map(item => ({
+        id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
+        chord: item.chord,
+        durationBeats: num,
+        velocity: item.velocity
+      }));
+
+      handleUpdateProgression(newProgression);
+    } catch (err) {
+      console.error("Erro no Reroll:", err);
+    } finally {
+      setAppState("IDLE");
+    }
+  }, [blocks, activeBlockId, handleUpdateProgression]);
+
   // O efeito colateral reativo de BPM foi removido para evitar estiramentos cumulativos da melodia.
 
   // ── Derivações visuais ────────────────────────────────
@@ -952,7 +1000,7 @@ export default function App() {
             setUtValue={handleSetUtValue}
             tonality={tonality}
             setTonality={handleSetTonality}
-            isPlaying={playingIndex === 0}
+            isPlaying={playingIndex !== null}
             onPlay={(timeOffset) => {
               if (activeBlock.noteSequence) playSequence(0, activeBlock.noteSequence, timeOffset, melodyInstrument, chordsInstrument);
             }}
@@ -964,7 +1012,49 @@ export default function App() {
             onUpdateProgression={handleUpdateProgression}
             onStartRecording={handleStartRecording}
             onReorderBlocks={setBlocks}
-            onPlayArrangement={() => stringEngine.playFullArrangement(blocks, melodyInstrument, chordsInstrument)}
+            onPlayArrangement={() => {
+              arrangementTimeoutsRef.current.forEach(clearTimeout);
+              arrangementTimeoutsRef.current = [];
+
+              if (playingIndexRef.current === -1) {
+                stringEngine.stop();
+                setPlayingIndex(null);
+                playingIndexRef.current = null;
+                return;
+              }
+              stringEngine.stop();
+              setPlayingIndex(-1);
+              playingIndexRef.current = -1;
+              let accumulatedTime = 0;
+              
+              blocks.forEach((b) => {
+                if (b.noteSequence) {
+                  const blockDur = b.noteSequence.notes?.reduce((max, n) => Math.max(max, n.endTime || 0), 0) || 0;
+                  if (blockDur > 0) {
+                    const tId = b.id;
+                    const tid = setTimeout(() => {
+                      if (playingIndexRef.current === -1) {
+                        setActiveBlockId(tId);
+                        setBlocks(prev => prev.map(blk => blk.id === tId && blk.newlyGenerated ? { ...blk, newlyGenerated: false } : blk));
+                      }
+                    }, accumulatedTime * 1000);
+                    arrangementTimeoutsRef.current.push(tid);
+                    accumulatedTime += blockDur;
+                  }
+                }
+              });
+
+              stringEngine.playFullArrangement(blocks, melodyInstrument, chordsInstrument).then(() => {
+                const stopTid = setTimeout(() => {
+                  if (playingIndexRef.current === -1) {
+                    setPlayingIndex(null);
+                    playingIndexRef.current = null;
+                  }
+                }, (accumulatedTime + 0.5) * 1000);
+                arrangementTimeoutsRef.current.push(stopTid);
+              });
+            }}
+            onReroll={handleRerollProgression}
             melodyInstrument={melodyInstrument}
             setMelodyInstrument={setMelodyInstrument}
             chordsInstrument={chordsInstrument}
