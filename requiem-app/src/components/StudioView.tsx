@@ -6,6 +6,7 @@ import { TopBar } from "./TopBar";
 import { TrackHeaders } from "./TrackHeaders";
 import { ChordBlock } from "./ChordBlock";
 import type { TimeSignature } from "./TimeSignatureSelector";
+import { useAuth } from "../contexts/AuthContext";
 
 // ─────────────────────────────────────────────────────────
 //  Constantes do Piano Roll
@@ -120,6 +121,7 @@ export function StudioView({
   onReroll,
 }: StudioViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { user } = useAuth();
   
   // ── States for Sidebar ──
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -541,7 +543,7 @@ export function StudioView({
         {/* Fundo Desfocado (Blurred Background from Cover) */}
         <div className="absolute top-0 left-0 w-full h-[500px] pointer-events-none z-0 overflow-hidden">
           <img 
-            src={`https://image.pollinations.ai/prompt/${encodeURIComponent(compositionName + " abstract dark aesthetic music album cover art HQ")}?width=512&height=512&nologo=true&seed=42`}
+            src={`https://api.dicebear.com/9.x/shapes/svg?seed=${encodeURIComponent(compositionName)}&backgroundColor=0a0a0a,1a1a1a,121212&shape1Color=10b981,059669,34d399,ef4444,3b82f6&shape2Color=10b981,059669,34d399,ef4444,3b82f6&shape3Color=10b981,059669,34d399,ef4444,3b82f6`}
             className="w-full h-full object-cover blur-[80px] opacity-70 scale-150 transform-gpu"
             alt=""
           />
@@ -564,7 +566,7 @@ export function StudioView({
           {/* Capa do Álbum (Floating) */}
           <div className="px-10 pt-6 pb-6 flex justify-center">
             <img 
-              src={`https://image.pollinations.ai/prompt/${encodeURIComponent(compositionName + " abstract dark aesthetic music album cover art HQ")}?width=512&height=512&nologo=true&seed=42`}
+              src={`https://api.dicebear.com/9.x/shapes/svg?seed=${encodeURIComponent(compositionName)}&backgroundColor=0a0a0a,1a1a1a,121212&shape1Color=10b981,059669,34d399,ef4444,3b82f6&shape2Color=10b981,059669,34d399,ef4444,3b82f6&shape3Color=10b981,059669,34d399,ef4444,3b82f6`}
               alt="Album Cover" 
               className="w-full aspect-square object-cover shadow-[0_20px_50px_rgba(0,0,0,0.5)] rounded-md"
             />
@@ -577,7 +579,7 @@ export function StudioView({
             </h2>
             <p className="text-sm font-medium text-white/70 flex items-center gap-2 drop-shadow-sm">
               <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
-              Requiem AI
+              {user?.name || "Requiem AI"}
             </p>
           </div>
 

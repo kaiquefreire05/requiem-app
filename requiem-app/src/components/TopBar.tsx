@@ -74,6 +74,7 @@ export function TopBar({
 }: TopBarProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
+  const [customBpmStr, setCustomBpmStr] = useState<string>("");
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -88,6 +89,16 @@ export function TopBar({
   }, [isSettingsOpen]);
   
   const currentBpm = isRecorded ? bpm : preRecordBpm;
+
+  // Sincroniza o valor do BPM com o campo de texto local para permitir que o usuário apague tudo ao digitar
+  useEffect(() => {
+    if (currentBpm === "AUTO") {
+      setCustomBpmStr("");
+    } else {
+      setCustomBpmStr(currentBpm.toString());
+    }
+  }, [currentBpm, isSettingsOpen]);
+
   const setAnyBpm = (val: number | "AUTO") => isRecorded ? setBpm(val as number) : setPreRecordBpm(val);
   const currentTimeSig = isRecorded ? { numerator: qtValue, denominator: utValue } : preRecordTimeSignature;
   const setAnyTimeSig = (val: TimeSignature) => isRecorded ? (setQtValue(val.numerator), setUtValue(val.denominator)) : setPreRecordTimeSignature(val);
@@ -138,17 +149,17 @@ export function TopBar({
           {/* Pills to show current configuration */}
           <div className="flex items-center gap-1.5 ml-2 hidden sm:flex">
             {(currentTimeSig.numerator !== 4 || currentTimeSig.denominator !== 4) && (
-              <span className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[10px] font-mono text-white/60">
+              <span className="px-2 py-1 rounded-md bg-white border border-white text-[10px] font-mono font-semibold text-black">
                 {currentTimeSig.numerator}/{currentTimeSig.denominator}
               </span>
             )}
             {currentBpm !== "AUTO" && (
-              <span className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[10px] font-mono text-white/60">
+              <span className="px-2 py-1 rounded-md bg-white border border-white text-[10px] font-mono font-semibold text-black">
                 {currentBpm} BPM
               </span>
             )}
             {currentTonality !== "AUTO" && (
-              <span className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[10px] font-mono text-white/60">
+              <span className="px-2 py-1 rounded-md bg-white border border-white text-[10px] font-mono font-semibold text-black">
                 Tom: {currentTonality}
               </span>
             )}
@@ -218,16 +229,30 @@ export function TopBar({
                     Auto-detectar
                   </button>
                 )}
-                <div className="grid grid-cols-3 gap-1.5 mt-2">
-                  {COMMON_BPMS.map((b) => (
-                    <button
-                      key={`bpm-${b}`}
-                      onClick={() => setAnyBpm(b)}
-                      className={`py-1.5 rounded text-xs font-medium transition-colors ${currentBpm === b ? "bg-emerald-500/20 text-emerald-400" : "bg-black/40 text-white/60 hover:bg-white/5 hover:text-white"}`}
-                    >
-                      {b}
-                    </button>
-                  ))}
+                <div className="mt-2">
+                  <input 
+                    type="number"
+                    min="40"
+                    max="300"
+                    placeholder="Digite o BPM (ex: 120)"
+                    value={customBpmStr}
+                    onChange={(e) => {
+                      setCustomBpmStr(e.target.value);
+                      const val = parseInt(e.target.value);
+                      if (!isNaN(val) && val > 0) {
+                        setAnyBpm(val);
+                      }
+                    }}
+                    onBlur={() => {
+                      if (customBpmStr === "" && currentBpm !== "AUTO") {
+                        setCustomBpmStr("120");
+                        setAnyBpm(120);
+                      } else if (currentBpm === "AUTO") {
+                        setCustomBpmStr("");
+                      }
+                    }}
+                    className="w-full bg-black/40 border border-white/5 rounded-lg py-2 px-3 text-xs text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/50 transition-colors"
+                  />
                 </div>
               </div>
 

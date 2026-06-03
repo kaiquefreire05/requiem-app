@@ -1,5 +1,5 @@
 {
   "title": "Blade Runner Blues - Vangelis",
-  "originalTonality": "C",
-  "normalizedProgression": ["Cmaj7", "Emadd9", "Fmaj7", "Gsus4", "G", "Cadd9"]
+  "originalTonality": "Cm",
+  "normalizedProgression": ["Cm", "Fm", "Ab", "G", "Cm", "Ab", "Fm", "G"]
 }

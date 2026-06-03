@@ -6,6 +6,11 @@ export default {
   ],
   theme: {
     extend: {
+      // Fontes Customizadas
+      fontFamily: {
+        sans: ['Inter', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'monospace'],
+      },
       // Adicionando uma animação suave para a aurora se mover levemente
       animation: {
         'aurora-slow': 'aurora 15s ease infinite alternate',

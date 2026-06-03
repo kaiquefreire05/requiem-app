@@ -5,3 +5,8 @@ body {
   margin: 0;
   background-color: #030712; /* bg-gray-950 de garantia */
 }
+
+@keyframes twinkle {
+  0%, 100% { opacity: inherit; }
+  50% { opacity: 0.1; }
+}

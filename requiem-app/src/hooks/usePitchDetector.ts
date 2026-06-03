@@ -124,8 +124,8 @@ function autoCorrelate(buffer: Float32Array, sampleRate: number): number {
 
   const freq = sampleRate / maxLag;
 
-  // Filtro: ignorar frequências absurdas
-  if (freq < 60 || freq > 2000) return 0;
+  // Filtro: ignorar frequências absurdas (abaixo de C3 ou muito altas)
+  if (freq < 130 || freq > 2000) return 0;
   return freq;
 }
 

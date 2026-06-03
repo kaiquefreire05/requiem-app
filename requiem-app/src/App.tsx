@@ -24,6 +24,8 @@ import {
 } from "./engine/TonalityAdapter";
 import { detectKey, estimateBPM } from "./engine/AudioAnalyzer";
 import { Starfield } from "./components/Starfield";
+import { SearchScreen } from "./components/SearchScreen";
+import { useAuth } from "./contexts/AuthContext";
 
 // ─────────────────────────────────────────────────────────
 //  Máquina de Estados do fluxo principal
@@ -92,8 +94,11 @@ function glueNotes(rawNotes: DetectedNote[]): DetectedNote[] {
       : a.pitch - b.pitch,
   );
 
-  // 2. Filtrar notas muito curtas
-  const solidNotes = sorted.filter(n => (n.endTime - n.startTime) > 0.08);
+  // 2. Filtrar notas muito curtas e graves (ruídos e harmônicos indesejados)
+  const solidNotes = sorted.filter(n => 
+    (n.endTime - n.startTime) > 0.11 && // Aumentado para 110ms para evitar ghost notes
+    n.pitch >= 48 // Ignora notas abaixo de C3 (48) que geralmente são captações falsas do mic
+  );
   if (solidNotes.length === 0) return [];
 
   // 3. Agrupar por pitch e colar fragmentos do MESMO pitch
@@ -247,7 +252,9 @@ function progressionToNoteSequence(
 export default function App() {
 
   // ── UI state ──────────────────────────────────────────
+  const { user } = useAuth();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [bpm, setBpm] = useState(120);
   const [qtValue, setQtValue] = useState(4);
   const [utValue, setUtValue] = useState(4);
@@ -889,7 +896,18 @@ export default function App() {
         onSessionChange={handleSessionChange}
         onSessionRename={handleSessionRename}
         activeSession={activeSession}
+        onSearchClick={() => setIsSearchOpen(true)}
       />
+
+      {isSearchOpen && (
+        <SearchScreen 
+          onSessionSelect={(session) => {
+            handleSessionChange(session);
+            setIsSearchOpen(false);
+          }}
+          onClose={() => setIsSearchOpen(false)}
+        />
+      )}
 
       {/* ─── VIBE VIEW ─── */}
       {activeTab === "vibe" && (
@@ -913,7 +931,7 @@ export default function App() {
 
               <div className={`w-full flex flex-col items-center transition-all duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isActive ? 'opacity-0 h-0 scale-90 pointer-events-none' : 'opacity-100 h-auto scale-100'}`}>
                 <h1 className="text-3xl sm:text-4xl font-normal tracking-tight text-white/90 mb-10 drop-shadow-md">
-                  Olá! O que iremos compor hoje?
+                  {user?.name ? `Olá, ${user.name.split(' ')[0]}! O que iremos compor hoje?` : "Olá! O que iremos compor hoje?"}
                 </h1>
 
                 <RecordControls

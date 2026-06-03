@@ -43,6 +43,15 @@ export function RecordControls({
   
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
+  const [customBpmStr, setCustomBpmStr] = useState<string>("");
+
+  useEffect(() => {
+    if (preRecordBpm === "AUTO") {
+      setCustomBpmStr("");
+    } else {
+      setCustomBpmStr(preRecordBpm.toString());
+    }
+  }, [preRecordBpm, isSettingsOpen]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -128,16 +137,30 @@ export function RecordControls({
               >
                 Detectar automaticamente
               </button>
-              <div className="grid grid-cols-3 gap-1.5 mt-2">
-                {COMMON_BPMS.map((b) => (
-                  <button
-                    key={`bpm-${b}`}
-                    onClick={() => setPreRecordBpm(b)}
-                    className={`py-1.5 rounded text-xs font-medium transition-colors ${preRecordBpm === b ? "bg-emerald-500/20 text-emerald-400" : "bg-black/40 text-white/60 hover:bg-white/5 hover:text-white"}`}
-                  >
-                    {b}
-                  </button>
-                ))}
+              <div className="mt-2">
+                <input 
+                  type="number"
+                  min="40"
+                  max="300"
+                  placeholder="Digite o BPM (ex: 120)"
+                  value={customBpmStr}
+                  onChange={(e) => {
+                    setCustomBpmStr(e.target.value);
+                    const val = parseInt(e.target.value);
+                    if (!isNaN(val) && val > 0) {
+                      setPreRecordBpm(val);
+                    }
+                  }}
+                  onBlur={() => {
+                    if (customBpmStr === "" && preRecordBpm !== "AUTO") {
+                      setCustomBpmStr("120");
+                      setPreRecordBpm(120);
+                    } else if (preRecordBpm === "AUTO") {
+                      setCustomBpmStr("");
+                    }
+                  }}
+                  className="w-full bg-black/40 border border-white/5 rounded-lg py-2 px-3 text-xs text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/50 transition-colors"
+                />
               </div>
             </div>
 
@@ -209,17 +232,17 @@ export function RecordControls({
             {!isRecording && !isProcessing && (
               <div className="flex items-center gap-1.5 hidden sm:flex">
                 {(preRecordTimeSignature.numerator !== 4 || preRecordTimeSignature.denominator !== 4) && (
-                  <span className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[10px] font-mono text-white/60">
+                  <span className="px-2 py-1 rounded-md bg-white border border-white text-[10px] font-mono font-semibold text-black">
                     {preRecordTimeSignature.numerator}/{preRecordTimeSignature.denominator}
                   </span>
                 )}
                 {preRecordBpm !== "AUTO" && (
-                  <span className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[10px] font-mono text-white/60">
+                  <span className="px-2 py-1 rounded-md bg-white border border-white text-[10px] font-mono font-semibold text-black">
                     {preRecordBpm} BPM
                   </span>
                 )}
                 {preRecordTonality !== "AUTO" && (
-                  <span className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[10px] font-mono text-white/60">
+                  <span className="px-2 py-1 rounded-md bg-white border border-white text-[10px] font-mono font-semibold text-black">
                     Tom: {preRecordTonality}
                   </span>
                 )}
