@@ -6,11 +6,13 @@ import {
 import type { INoteSequence } from "@magenta/music";
 import { usePitchDetector } from "./hooks/usePitchDetector";
 import { useStringEngine } from "./hooks/useStringEngine";
+import { useMIDIConnector } from "./hooks/useMIDIConnector";
+import type { MIDIEvent } from "./hooks/useMIDIConnector";
 import type { DetectedNote } from "./hooks/usePitchDetector";
 import { Sidebar } from "./components/Sidebar";
 import { RecordControls } from "./components/RecordControls";
 import { DynamicRing } from "./components/DynamicRing";
-import type { ChatSession, SerializedBlock } from "./lib/api";
+import type { ChatSession, SerializedBlock, SerializedTrack } from "./lib/api";
 import { apiSaveComposition, apiCreateSession } from "./lib/api";
 
 import { StudioView } from "./components/StudioView";
@@ -34,7 +36,8 @@ export type AppState =
   | "IDLE"
   | "RECORDING"
   | "REVIEW_RECORDING"
-  | "PROCESSING";
+  | "PROCESSING"
+  | "MIDI_RECORDING";
 
 export interface ChordSegment {
   id: string;
@@ -44,6 +47,20 @@ export interface ChordSegment {
 }
 
 export type InstrumentType = "piano" | "strings" | "pad";
+
+export type TrackType = 'audio' | 'midi' | 'smart';
+
+/** Track extra (Melody MIDI adicional) */
+export interface ExtraTrack {
+  id: string;
+  name: string;
+  notes: DetectedNote[];
+  instrument: InstrumentType;
+  volume: number;
+  muted: boolean;
+  noteSequence?: INoteSequence;
+  trackType?: TrackType;
+}
 
 export interface CompositionBlock {
   id: string;
@@ -55,6 +72,7 @@ export interface CompositionBlock {
   bpm: number;
   timeSignature: string;
   newlyGenerated?: boolean;
+  extraTracks?: ExtraTrack[];
 }
 
 // ── Stale-closure-safe label map ────────────────────────
@@ -63,6 +81,7 @@ const STATE_LABELS: Record<AppState, string> = {
   RECORDING: "Gravando · Clique para parar",
   REVIEW_RECORDING: "Analisar áudio gravado?",
   PROCESSING: "Transcrevendo áudio e gerando harmonia...",
+  MIDI_RECORDING: "Gravando MIDI · Clique para parar",
 };
 
 // ─────────────────────────────────────────────────────────
@@ -317,6 +336,15 @@ export default function App() {
             );
           } catch { return undefined; }
         })() : undefined,
+        extraTracks: b.extraTracks?.map(t => ({
+          id: t.id,
+          name: t.name,
+          notes: t.notes as DetectedNote[],
+          instrument: (t.instrument as InstrumentType) || 'piano',
+          volume: t.volume ?? 1,
+          muted: t.muted ?? false,
+          noteSequence: t.notes.length > 0 ? buildMelodySequence(t.notes as DetectedNote[], b.bpm) : undefined,
+        })),
       }));
       setBlocks(restored);
       setActiveBlockId(restored[0].id);
@@ -352,9 +380,16 @@ export default function App() {
     appStateRef.current = appState;
   }, [appState]);
 
-  // ── Hooks personalizados ──────────────────────────────
+  // ── Hooks personalizados ────────────────────────────
   const pitchDetector = usePitchDetector();
   const stringEngine = useStringEngine();
+  const midiConnector = useMIDIConnector();
+
+  // ── Estado de Track selecionada para gravação MIDI ─────
+  const [selectedTrackIndex, setSelectedTrackIndex] = useState<number | null>(null);
+  const midiRecordingStartRef = useRef<number>(0);
+  const midiActiveNotesRef = useRef<Map<number, { startTime: number; velocity: number }>>(new Map());
+  const midiRecordedNotesRef = useRef<DetectedNote[]>([]);
 
   // ── Sincronizar Volume/Mute com Engine ────────────────
   useEffect(() => {
@@ -608,6 +643,10 @@ export default function App() {
                 key: b.key,
                 bpm: b.bpm,
                 timeSignature: b.timeSignature,
+                extraTracks: b.extraTracks?.map(t => ({
+                  id: t.id, name: t.name, notes: t.notes,
+                  instrument: t.instrument, volume: t.volume, muted: t.muted,
+                })),
               }));
 
               await apiSaveComposition(session.id, serialized);
@@ -675,6 +714,10 @@ export default function App() {
           key: b.key,
           bpm: b.bpm,
           timeSignature: b.timeSignature,
+          extraTracks: b.extraTracks?.map(t => ({
+            id: t.id, name: t.name, notes: t.notes,
+            instrument: t.instrument, volume: t.volume, muted: t.muted,
+          })),
         }));
         await apiSaveComposition(session.id, serialized);
       } catch (e) {
@@ -758,6 +801,209 @@ export default function App() {
     }
   }, [activeBlockId, pitchDetector]);
 
+  // ── MIDI Recording Handlers ─────────────────────────
+  const handleStartMIDIRecording = useCallback(() => {
+    if (selectedTrackIndex === null || !midiConnector.activeDevice) return;
+    
+    midiRecordingStartRef.current = performance.now();
+    midiActiveNotesRef.current.clear();
+    midiRecordedNotesRef.current = [];
+    setAppState('MIDI_RECORDING');
+
+    // Registrar callback MIDI
+    midiConnector.onMIDIEvent.current = (event: MIDIEvent) => {
+      const elapsed = (event.timestamp - midiRecordingStartRef.current) / 1000; // em segundos
+
+      if (event.action === 'note-on') {
+        // Tocar sample ao vivo
+        const block = blocks.find(b => b.id === activeBlockId);
+        const track = block?.extraTracks?.[selectedTrackIndex!];
+        const inst = track?.instrument || 'piano';
+        stringEngine.playMIDINote(event.midiNumber, event.velocity, inst);
+
+        // Registrar nota ativa
+        midiActiveNotesRef.current.set(event.midiNumber, {
+          startTime: elapsed,
+          velocity: event.velocity,
+        });
+      } else if (event.action === 'note-off') {
+        // Soltar sample
+        const block = blocks.find(b => b.id === activeBlockId);
+        const track = block?.extraTracks?.[selectedTrackIndex!];
+        const inst = track?.instrument || 'piano';
+        stringEngine.stopMIDINote(event.midiNumber, inst);
+
+        // Fechar nota
+        const active = midiActiveNotesRef.current.get(event.midiNumber);
+        if (active) {
+          const note: DetectedNote = {
+            pitch: event.midiNumber,
+            startTime: active.startTime,
+            endTime: elapsed,
+            amplitude: active.velocity / 127,
+          };
+          midiRecordedNotesRef.current.push(note);
+          midiActiveNotesRef.current.delete(event.midiNumber);
+
+          // Atualizar clip em tempo real
+          const updatedNotes = [...midiRecordedNotesRef.current];
+          setBlocks(prev => prev.map(b => {
+            if (b.id !== activeBlockId || !b.extraTracks) return b;
+            const newTracks = [...b.extraTracks];
+            if (newTracks[selectedTrackIndex!]) {
+              const ns = buildMelodySequence(updatedNotes, b.bpm);
+              newTracks[selectedTrackIndex!] = {
+                ...newTracks[selectedTrackIndex!],
+                notes: updatedNotes,
+                noteSequence: ns,
+              };
+            }
+            return { ...b, extraTracks: newTracks };
+          }));
+        }
+      }
+    };
+  }, [selectedTrackIndex, midiConnector, activeBlockId, blocks, stringEngine]);
+
+  const handleStopMIDIRecording = useCallback(() => {
+    // Desregistrar callback
+    midiConnector.onMIDIEvent.current = null;
+
+    // Fechar notas ainda ativas
+    const now = (performance.now() - midiRecordingStartRef.current) / 1000;
+    midiActiveNotesRef.current.forEach((active, pitch) => {
+      midiRecordedNotesRef.current.push({
+        pitch,
+        startTime: active.startTime,
+        endTime: now,
+        amplitude: active.velocity / 127,
+      });
+    });
+    midiActiveNotesRef.current.clear();
+
+    // Atualizar bloco final
+    const finalNotes = [...midiRecordedNotesRef.current];
+    let updatedBlocks: CompositionBlock[] = [];
+    setBlocks(prev => {
+      const next = prev.map(b => {
+        if (b.id !== activeBlockId || !b.extraTracks || selectedTrackIndex === null) return b;
+        const newTracks = [...b.extraTracks];
+        if (newTracks[selectedTrackIndex]) {
+          const ns = buildMelodySequence(finalNotes, b.bpm);
+          newTracks[selectedTrackIndex] = {
+            ...newTracks[selectedTrackIndex],
+            notes: finalNotes,
+            noteSequence: ns,
+          };
+        }
+        return { ...b, extraTracks: newTracks };
+      });
+      updatedBlocks = next;
+      return next;
+    });
+
+    setAppState('IDLE');
+
+    // Auto-save
+    setTimeout(async () => {
+      const session = activeSessionRef.current;
+      if (!session || updatedBlocks.length === 0) return;
+      try {
+        const serialized: SerializedBlock[] = updatedBlocks.map(b => ({
+          id: b.id, name: b.name, notes: b.notes, progression: b.progression,
+          key: b.key, bpm: b.bpm, timeSignature: b.timeSignature,
+          extraTracks: b.extraTracks?.map(t => ({
+            id: t.id, name: t.name, notes: t.notes,
+            instrument: t.instrument, volume: t.volume, muted: t.muted,
+          })),
+        }));
+        await apiSaveComposition(session.id, serialized);
+        console.log('[Requiem] MIDI recording salvo');
+      } catch (e) {
+        console.warn('[Requiem] Auto-save MIDI falhou:', e);
+      }
+    }, 0);
+  }, [midiConnector, activeBlockId, selectedTrackIndex]);
+
+  // ── Extra Track CRUD ──────────────────────────────
+  const handleAddExtraTrack = useCallback((type: TrackType = 'midi') => {
+    setBlocks(prev => prev.map(b => {
+      if (b.id !== activeBlockId) return b;
+      const existing = b.extraTracks || [];
+      
+      let defaultName = `Track ${3 + existing.length}`;
+      if (type === 'audio') defaultName = `Áudio ${3 + existing.length}`;
+      if (type === 'smart') defaultName = `Smart ${3 + existing.length}`;
+      
+      const newTrack: ExtraTrack = {
+        id: Date.now().toString() + Math.random().toString(36).substring(2, 7),
+        name: defaultName,
+        notes: [],
+        instrument: 'piano',
+        volume: 1,
+        muted: false,
+        trackType: type,
+      };
+      return { ...b, extraTracks: [...existing, newTrack] };
+    }));
+  }, [activeBlockId]);
+
+  const handleRemoveExtraTrack = useCallback((trackIndex: number) => {
+    setBlocks(prev => prev.map(b => {
+      if (b.id !== activeBlockId || !b.extraTracks) return b;
+      const newTracks = b.extraTracks.filter((_, i) => i !== trackIndex);
+      return { ...b, extraTracks: newTracks };
+    }));
+    if (selectedTrackIndex === trackIndex) setSelectedTrackIndex(null);
+    else if (selectedTrackIndex !== null && selectedTrackIndex > trackIndex) {
+      setSelectedTrackIndex(selectedTrackIndex - 1);
+    }
+  }, [activeBlockId, selectedTrackIndex]);
+
+  const handleRenameExtraTrack = useCallback((trackIndex: number, newName: string) => {
+    setBlocks(prev => prev.map(b => {
+      if (b.id !== activeBlockId || !b.extraTracks) return b;
+      const newTracks = [...b.extraTracks];
+      if (newTracks[trackIndex]) {
+        newTracks[trackIndex] = { ...newTracks[trackIndex], name: newName };
+      }
+      return { ...b, extraTracks: newTracks };
+    }));
+  }, [activeBlockId]);
+
+  const handleSetExtraTrackInstrument = useCallback((trackIndex: number, instrument: InstrumentType) => {
+    setBlocks(prev => prev.map(b => {
+      if (b.id !== activeBlockId || !b.extraTracks) return b;
+      const newTracks = [...b.extraTracks];
+      if (newTracks[trackIndex]) {
+        newTracks[trackIndex] = { ...newTracks[trackIndex], instrument };
+      }
+      return { ...b, extraTracks: newTracks };
+    }));
+  }, [activeBlockId]);
+
+  const handleSetExtraTrackVolume = useCallback((trackIndex: number, volume: number) => {
+    setBlocks(prev => prev.map(b => {
+      if (b.id !== activeBlockId || !b.extraTracks) return b;
+      const newTracks = [...b.extraTracks];
+      if (newTracks[trackIndex]) {
+        newTracks[trackIndex] = { ...newTracks[trackIndex], volume };
+      }
+      return { ...b, extraTracks: newTracks };
+    }));
+  }, [activeBlockId]);
+
+  const handleSetExtraTrackMuted = useCallback((trackIndex: number, muted: boolean) => {
+    setBlocks(prev => prev.map(b => {
+      if (b.id !== activeBlockId || !b.extraTracks) return b;
+      const newTracks = [...b.extraTracks];
+      if (newTracks[trackIndex]) {
+        newTracks[trackIndex] = { ...newTracks[trackIndex], muted };
+      }
+      return { ...b, extraTracks: newTracks };
+    }));
+  }, [activeBlockId]);
+
   const handleAddBlock = useCallback(() => {
     const id = Date.now().toString();
     const newBlock: CompositionBlock = {
@@ -829,6 +1075,10 @@ export default function App() {
             key: blk.key,
             bpm: blk.bpm,
             timeSignature: blk.timeSignature,
+            extraTracks: blk.extraTracks?.map(t => ({
+              id: t.id, name: t.name, notes: t.notes,
+              instrument: t.instrument, volume: t.volume, muted: t.muted,
+            })),
           }));
           await apiSaveComposition(session.id, serialized);
         } catch (e) {
@@ -1092,6 +1342,26 @@ export default function App() {
             setPreRecordTonality={setPreRecordTonality}
             preRecordTimeSignature={preRecordTimeSignature}
             setPreRecordTimeSignature={setPreRecordTimeSignature}
+            // MIDI props
+            midiDevices={midiConnector.devices}
+            activeMIDIDevice={midiConnector.activeDevice}
+            midiReady={midiConnector.isReady}
+            midiError={midiConnector.error}
+            onConnectMIDIDevice={midiConnector.connect}
+            onDisconnectMIDI={midiConnector.disconnect}
+            isMIDIRecording={appState === 'MIDI_RECORDING'}
+            onStartMIDIRecording={handleStartMIDIRecording}
+            onStopMIDIRecording={handleStopMIDIRecording}
+            selectedTrackIndex={selectedTrackIndex}
+            onSelectTrack={setSelectedTrackIndex}
+            onAddExtraTrack={handleAddExtraTrack}
+            onRemoveExtraTrack={handleRemoveExtraTrack}
+            onRenameExtraTrack={handleRenameExtraTrack}
+            onSetExtraTrackInstrument={handleSetExtraTrackInstrument}
+            onSetExtraTrackVolume={handleSetExtraTrackVolume}
+            onSetExtraTrackMuted={handleSetExtraTrackMuted}
+            extraTracks={activeBlock.extraTracks || []}
+            lastMIDIEvent={midiConnector.lastEvent}
           />
         </main>
       )}

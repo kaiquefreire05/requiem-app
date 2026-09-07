@@ -103,6 +103,16 @@ export interface SerializedNote {
   amplitude: number;
 }
 
+/** Serializable track for dynamic MIDI tracks */
+export interface SerializedTrack {
+  id: string;
+  name: string;
+  notes: SerializedNote[];
+  instrument: string;
+  volume: number;
+  muted: boolean;
+}
+
 /** Serializable composition block stored in the DB */
 export interface SerializedBlock {
   id: string;
@@ -112,6 +122,7 @@ export interface SerializedBlock {
   key: string;
   bpm: number;
   timeSignature: string;
+  extraTracks?: SerializedTrack[];
 }
 
 export interface ChatSession {

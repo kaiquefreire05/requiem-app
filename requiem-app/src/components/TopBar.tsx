@@ -13,7 +13,8 @@ import {
   Music,
 } from "lucide-react";
 import { ALL_TONALITIES } from "../engine/TonalityAdapter";
-import type { TimeSignature } from "./TimeSignatureSelector"; // assuming it exists or define inline
+import type { TimeSignature } from "./TimeSignatureSelector";
+import type { MIDIDeviceInfo } from "../hooks/useMIDIConnector";
 
 export interface TopBarProps {
   onStartRecording?: () => void;
@@ -40,6 +41,13 @@ export interface TopBarProps {
   setPreRecordTonality: (val: string) => void;
   preRecordTimeSignature: TimeSignature;
   setPreRecordTimeSignature: (val: TimeSignature) => void;
+  // MIDI
+  isMIDIRecording?: boolean;
+  activeMIDIDevice?: MIDIDeviceInfo | null;
+  midiDevices?: MIDIDeviceInfo[];
+  midiReady?: boolean;
+  onConnectMIDIDevice?: (id: string) => void;
+  onDisconnectMIDI?: () => void;
 }
 
 const COMMON_BPMS = [80, 90, 100, 120, 140, 160];
@@ -71,6 +79,12 @@ export function TopBar({
   setPreRecordTonality,
   preRecordTimeSignature,
   setPreRecordTimeSignature,
+  isMIDIRecording,
+  activeMIDIDevice,
+  midiDevices,
+  midiReady,
+  onConnectMIDIDevice,
+  onDisconnectMIDI,
 }: TopBarProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
@@ -120,14 +134,32 @@ export function TopBar({
 
       <div className="flex items-center justify-center gap-2">
         {/* Record Button */}
-        <div className="bg-black/20 rounded-lg p-1 flex items-center justify-center">
+        <div className="bg-black/20 rounded-lg p-1 flex items-center justify-center gap-1">
           <button 
             onClick={onStartRecording}
-            className="p-1.5 rounded-md hover:bg-white/5 transition-colors flex items-center justify-center"
-            title="Gravar"
+            className={`p-1.5 rounded-md hover:bg-white/5 transition-colors flex items-center justify-center ${isMIDIRecording ? 'bg-red-500/20' : ''}`}
+            title={isMIDIRecording ? "Parar Gravação MIDI" : "Gravar"}
           >
-            <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse-subtle" />
+            <div className={`w-3 h-3 rounded-full ${isMIDIRecording ? 'bg-red-500 animate-ping' : 'bg-red-500 animate-pulse-subtle'}`} />
           </button>
+          {/* MIDI device indicator */}
+          {activeMIDIDevice && (
+            <span className="text-[9px] font-mono text-emerald-400/70 max-w-[80px] truncate hidden sm:block" title={activeMIDIDevice.name}>
+              {activeMIDIDevice.name}
+            </span>
+          )}
+          {midiReady && !activeMIDIDevice && midiDevices && midiDevices.length > 0 && (
+            <select
+              className="text-[9px] font-mono bg-transparent border border-white/10 rounded px-1 py-0.5 text-white/50 cursor-pointer focus:outline-none max-w-[80px] hidden sm:block"
+              value=""
+              onChange={(e) => onConnectMIDIDevice?.(e.target.value)}
+            >
+              <option value="" disabled>MIDI...</option>
+              {midiDevices.map(d => (
+                <option key={d.id} value={d.id} className="bg-zinc-900 text-white">{d.name}</option>
+              ))}
+            </select>
+          )}
         </div>
         {/* Transport Controls */}
         <div className="flex items-center gap-1 bg-black/20 rounded-lg p-1">

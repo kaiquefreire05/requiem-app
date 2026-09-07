@@ -10,6 +10,10 @@ export interface UseStringEngineReturn {
   stop: () => void;
   setTrackVolume: (track: number, vol: number) => void;
   setTrackMute: (track: number, muted: boolean) => void;
+  /** Inicia uma nota MIDI ao vivo (triggerAttack) */
+  playMIDINote: (pitch: number, velocity: number, instrument: InstrumentType) => void;
+  /** Solta uma nota MIDI ao vivo (triggerRelease) */
+  stopMIDINote: (pitch: number, instrument: InstrumentType) => void;
 }
 
 export function useStringEngine(): UseStringEngineReturn {
@@ -211,5 +215,39 @@ export function useStringEngine(): UseStringEngineReturn {
     [isLoaded, stop]
   );
 
-  return { isLoaded, playSequence, stop, playFullArrangement, setTrackVolume, setTrackMute };
+  // ── Live MIDI Note (Attack / Release imediato) ─────────
+  const playMIDINote = useCallback((pitch: number, velocity: number, instrument: InstrumentType) => {
+    if (!isLoaded) return;
+
+    // Garantir que o AudioContext esteja rodando
+    if (Tone.context.state !== 'running') {
+      Tone.start();
+    }
+
+    let synth: Tone.Sampler | Tone.PolySynth | null = null;
+    if (instrument === 'piano') synth = pianoSynthRef.current;
+    else if (instrument === 'strings') synth = stringsSynthRef.current;
+    else if (instrument === 'pad') synth = padSynthRef.current;
+    if (!synth) return;
+
+    const freq = Tone.Frequency(pitch, 'midi').toNote();
+    const normalizedVelocity = Math.max(0.01, velocity / 127);
+
+    synth.triggerAttack(freq, Tone.now(), normalizedVelocity);
+  }, [isLoaded]);
+
+  const stopMIDINote = useCallback((pitch: number, instrument: InstrumentType) => {
+    if (!isLoaded) return;
+
+    let synth: Tone.Sampler | Tone.PolySynth | null = null;
+    if (instrument === 'piano') synth = pianoSynthRef.current;
+    else if (instrument === 'strings') synth = stringsSynthRef.current;
+    else if (instrument === 'pad') synth = padSynthRef.current;
+    if (!synth) return;
+
+    const freq = Tone.Frequency(pitch, 'midi').toNote();
+    synth.triggerRelease(freq, Tone.now());
+  }, [isLoaded]);
+
+  return { isLoaded, playSequence, stop, playFullArrangement, setTrackVolume, setTrackMute, playMIDINote, stopMIDINote };
 }

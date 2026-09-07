@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import type { INoteSequence } from "@magenta/music";
-import { ZoomIn, ZoomOut, Plus, Trash2, ChevronRight, ChevronLeft, Play, Square, Activity, Music, Disc } from "lucide-react";
+import { ZoomIn, ZoomOut, Plus, Trash2, ChevronRight, ChevronLeft, Play, Square, Activity, Music, Disc, Download } from "lucide-react";
+import { exportArrangementToMidi } from "../engine/MidiExporter";
 import { PianoRoll } from "./PianoRoll";
 import { TopBar } from "./TopBar";
 import { TrackHeaders } from "./TrackHeaders";
@@ -13,7 +14,8 @@ import { useAuth } from "../contexts/AuthContext";
 // ─────────────────────────────────────────────────────────
 const RULER_HEIGHT = 28;
 
-import type { CompositionBlock, ChordSegment, InstrumentType } from "../App";
+import type { CompositionBlock, ChordSegment, InstrumentType, ExtraTrack } from "../App";
+import type { MIDIDeviceInfo, MIDIEvent } from "../hooks/useMIDIConnector";
 
 // ─────────────────────────────────────────────────────────
 //  Tipos
@@ -66,6 +68,26 @@ interface StudioViewProps {
   preRecordTimeSignature: TimeSignature;
   setPreRecordTimeSignature: (val: TimeSignature) => void;
   onReroll?: () => void;
+  // MIDI props
+  midiDevices: MIDIDeviceInfo[];
+  activeMIDIDevice: MIDIDeviceInfo | null;
+  midiReady: boolean;
+  midiError: string | null;
+  onConnectMIDIDevice: (id: string) => void;
+  onDisconnectMIDI: () => void;
+  isMIDIRecording: boolean;
+  onStartMIDIRecording: () => void;
+  onStopMIDIRecording: () => void;
+  selectedTrackIndex: number | null;
+  onSelectTrack: (index: number | null) => void;
+  onAddExtraTrack: (type?: 'audio' | 'midi' | 'smart') => void;
+  onRemoveExtraTrack: (index: number) => void;
+  onRenameExtraTrack: (index: number, newName: string) => void;
+  onSetExtraTrackInstrument: (index: number, instrument: InstrumentType) => void;
+  onSetExtraTrackVolume: (index: number, volume: number) => void;
+  onSetExtraTrackMuted: (index: number, muted: boolean) => void;
+  extraTracks: ExtraTrack[];
+  lastMIDIEvent: MIDIEvent | null;
 }
 
 // ─────────────────────────────────────────────────────────
@@ -119,6 +141,26 @@ export function StudioView({
   preRecordTimeSignature,
   setPreRecordTimeSignature,
   onReroll,
+  // MIDI
+  midiDevices,
+  activeMIDIDevice,
+  midiReady,
+  midiError,
+  onConnectMIDIDevice,
+  onDisconnectMIDI,
+  isMIDIRecording,
+  onStartMIDIRecording,
+  onStopMIDIRecording,
+  selectedTrackIndex,
+  onSelectTrack,
+  onAddExtraTrack,
+  onRemoveExtraTrack,
+  onRenameExtraTrack,
+  onSetExtraTrackInstrument,
+  onSetExtraTrackVolume,
+  onSetExtraTrackMuted,
+  extraTracks,
+  lastMIDIEvent,
 }: StudioViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
@@ -321,7 +363,6 @@ export function StudioView({
       {/* ── Central Area (Session) ── */}
       <div className="flex-1 flex flex-col overflow-hidden relative">
         <TopBar 
-          onStartRecording={onStartRecording}
           isPlaying={isPlaying}
           time={time}
           onPlay={onPlay}
@@ -345,12 +386,26 @@ export function StudioView({
           setPreRecordTonality={setPreRecordTonality}
           preRecordTimeSignature={preRecordTimeSignature}
           setPreRecordTimeSignature={setPreRecordTimeSignature}
+          // MIDI-aware recording: if MIDI recording → stop; if track selected + MIDI → MIDI record; else → AI record
+          onStartRecording={
+            isMIDIRecording 
+              ? onStopMIDIRecording
+              : (selectedTrackIndex !== null && midiReady && activeMIDIDevice)
+                ? onStartMIDIRecording
+                : onStartRecording
+          }
+          isMIDIRecording={isMIDIRecording}
+          activeMIDIDevice={activeMIDIDevice}
+          midiDevices={midiDevices}
+          midiReady={midiReady}
+          onConnectMIDIDevice={onConnectMIDIDevice}
+          onDisconnectMIDI={onDisconnectMIDI}
         />
 
         <div className="flex flex-1 overflow-hidden">
           {/* ── Track Headers (Left Column) ── */}
           <TrackHeaders 
-            rulerHeight={40}
+            rulerHeight={RULER_HEIGHT}
             melodyInstrument={melodyInstrument}
             setMelodyInstrument={setMelodyInstrument}
             chordsInstrument={chordsInstrument}
@@ -364,6 +419,19 @@ export function StudioView({
             chordsMuted={chordsMuted}
             setChordsMuted={setChordsMuted}
             onReroll={onReroll}
+            // Dynamic tracks
+            extraTracks={extraTracks}
+            selectedTrackIndex={selectedTrackIndex}
+            onSelectTrack={onSelectTrack}
+            onAddExtraTrack={onAddExtraTrack}
+            onRemoveExtraTrack={onRemoveExtraTrack}
+            onRenameExtraTrack={onRenameExtraTrack}
+            onSetExtraTrackInstrument={onSetExtraTrackInstrument}
+            onSetExtraTrackVolume={onSetExtraTrackVolume}
+            onSetExtraTrackMuted={onSetExtraTrackMuted}
+            isMIDIRecording={isMIDIRecording}
+            midiReady={midiReady}
+            lastMIDIEvent={lastMIDIEvent}
           />
 
           {/* ── Timeline Area (Right Column) ── */}
@@ -434,24 +502,6 @@ export function StudioView({
               {/* Tracks Container */}
               <div className="flex-1 flex flex-col relative z-10">
                 
-                {/* Melody Lane */}
-                <div className="h-40 flex-none relative bg-[#181818]">
-                  <div className="absolute top-2 bottom-2 left-0 right-0">
-                    {melodyNotes.length > 0 && (() => {
-                      const firstNote = melodyNotes.reduce((min, n) => (n.startTime! < min.startTime! ? n : min), melodyNotes[0]);
-                      const lastNote = melodyNotes.reduce((max, n) => (n.endTime! > max.endTime! ? n : max), melodyNotes[0]);
-                      const left = firstNote.startTime! * pxPerSecond;
-                      const width = (lastNote.endTime! - firstNote.startTime!) * pxPerSecond;
-                      return (
-                        <div className="absolute top-2 bottom-2 rounded-md overflow-hidden" style={{ left: `${left}px`, width: `${width}px` }}>
-                          <PianoRoll notes={melodyNotes} laneColorClass="bg-white" pxPerSecond={pxPerSecond} />
-                          <div className="absolute top-1 left-2 text-[9px] font-bold text-black tracking-widest pointer-events-none">MELODY CLIP</div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                </div>
-
                 {/* Harmony Lane */}
                 <div className="h-[96px] flex-none relative bg-[#121212]">
                   {/* Block Progressions Layer */}
@@ -470,7 +520,7 @@ export function StudioView({
                       return (
                         <div 
                           key={`${chordObj.id}-${i}`}
-                          className={`absolute h-[60px] top-4 shrink-0 transition-all ${isNewlyGenerated ? 'animate-chord-pulse' : ''}`}
+                          className={`absolute top-0 bottom-0 shrink-0 transition-all ${isNewlyGenerated ? 'animate-chord-pulse' : ''}`}
                           style={{ 
                             left: `${currentLeft}px`,
                             animationDelay: isNewlyGenerated ? `${i * 0.05}s` : '0s'
@@ -528,6 +578,79 @@ export function StudioView({
                 </div>
 
               </div>
+
+                {/* Melody Lane */}
+                <div className="h-40 flex-none relative bg-[#181818]">
+                  <div className="absolute top-2 bottom-2 left-0 right-0">
+                    {melodyNotes.length > 0 && (() => {
+                      const firstNote = melodyNotes.reduce((min, n) => (n.startTime! < min.startTime! ? n : min), melodyNotes[0]);
+                      const lastNote = melodyNotes.reduce((max, n) => (n.endTime! > max.endTime! ? n : max), melodyNotes[0]);
+                      const left = firstNote.startTime! * pxPerSecond;
+                      const width = (lastNote.endTime! - firstNote.startTime!) * pxPerSecond;
+                      return (
+                        <div className="absolute top-2 bottom-2 rounded-md overflow-hidden" style={{ left: `${left}px`, width: `${width}px` }}>
+                          <PianoRoll notes={melodyNotes} laneColorClass="bg-white" pxPerSecond={pxPerSecond} />
+                          <div className="absolute top-1 left-2 text-[9px] font-bold text-black tracking-widest pointer-events-none">MELODY CLIP</div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* ── Dynamic Extra Track Lanes ── */}
+                {extraTracks.map((track, index) => {
+                  const trackNotes = track.noteSequence?.notes || [];
+                  const isThisRecording = selectedTrackIndex === index && isMIDIRecording;
+                  const isThisSelected = selectedTrackIndex === index;
+
+                  return (
+                    <div 
+                      key={track.id} 
+                      className={`h-32 flex-none relative border-b border-white/5 transition-all ${
+                        isThisRecording 
+                          ? "bg-red-500/[0.03]" 
+                          : isThisSelected 
+                            ? "bg-emerald-500/[0.02]"
+                            : "bg-[#151515]"
+                      }`}
+                    >
+                      {/* Recording indicator border */}
+                      {isThisRecording && (
+                        <div className="absolute inset-0 border border-red-500/30 rounded-sm pointer-events-none animate-pulse z-20" />
+                      )}
+
+                      <div className="absolute top-2 bottom-2 left-0 right-0">
+                        {trackNotes.length > 0 && (() => {
+                          const firstNote = trackNotes.reduce((min, n) => (n.startTime! < min.startTime! ? n : min), trackNotes[0]);
+                          const lastNote = trackNotes.reduce((max, n) => (n.endTime! > max.endTime! ? n : max), trackNotes[0]);
+                          const left = firstNote.startTime! * pxPerSecond;
+                          const width = Math.max((lastNote.endTime! - firstNote.startTime!) * pxPerSecond, 4);
+                          
+                          return (
+                            <div 
+                              className={`absolute top-2 bottom-2 rounded-md overflow-hidden transition-all ${
+                                isThisRecording ? "ring-1 ring-red-500/50" : ""
+                              }`}
+                              style={{ left: `${left}px`, width: `${width}px` }}
+                            >
+                              <PianoRoll 
+                                notes={trackNotes} 
+                                laneColorClass={isThisRecording ? "bg-red-400/80" : "bg-emerald-400/80"}
+                                pxPerSecond={pxPerSecond} 
+                              />
+                              <div className={`absolute top-1 left-2 text-[9px] font-bold tracking-widest pointer-events-none ${
+                                isThisRecording ? "text-red-900" : "text-emerald-900"
+                              }`}>
+                                {track.name.toUpperCase()} {isThisRecording ? "· REC" : ""}
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  );
+                })}
+
             </div>
           </div>
         </div>
@@ -591,8 +714,13 @@ export function StudioView({
             <div className="flex items-center gap-2 bg-white/10 hover:bg-white/15 cursor-default transition-colors px-4 py-2.5 rounded-full text-xs font-semibold text-white">
               <Music size={14} className="text-white/70" /> {blocks.length}
             </div>
-            <button className="flex items-center gap-2 bg-white/10 hover:bg-white/15 transition-colors px-4 py-2.5 rounded-full text-xs font-semibold text-white ml-auto">
-              Share <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+            <button 
+              onClick={() => exportArrangementToMidi(blocks, bpm, utValue)}
+              disabled={!blocks.some(b => (b.notes && b.notes.length > 0) || (b.progression && b.progression.length > 0))}
+              className="flex items-center gap-2 bg-white/10 hover:bg-white/15 transition-colors px-4 py-2.5 rounded-full text-xs font-semibold text-white ml-auto disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-white/10"
+              title="Exportar cada seção como arquivo MIDI"
+            >
+              Export MIDI <Download size={13} />
             </button>
           </div>
 
