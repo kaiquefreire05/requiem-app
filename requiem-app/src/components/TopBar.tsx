@@ -13,7 +13,8 @@ import {
   Music,
 } from "lucide-react";
 import { ALL_TONALITIES } from "../engine/TonalityAdapter";
-import type { TimeSignature } from "./TimeSignatureSelector"; // assuming it exists or define inline
+import type { TimeSignature } from "./TimeSignatureSelector";
+import type { MIDIDeviceInfo } from "../hooks/useMIDIConnector";
 
 export interface TopBarProps {
   onStartRecording?: () => void;
@@ -40,6 +41,13 @@ export interface TopBarProps {
   setPreRecordTonality: (val: string) => void;
   preRecordTimeSignature: TimeSignature;
   setPreRecordTimeSignature: (val: TimeSignature) => void;
+  // MIDI
+  isMIDIRecording?: boolean;
+  activeMIDIDevice?: MIDIDeviceInfo | null;
+  midiDevices?: MIDIDeviceInfo[];
+  midiReady?: boolean;
+  onConnectMIDIDevice?: (id: string) => void;
+  onDisconnectMIDI?: () => void;
 }
 
 const COMMON_BPMS = [80, 90, 100, 120, 140, 160];
@@ -71,9 +79,16 @@ export function TopBar({
   setPreRecordTonality,
   preRecordTimeSignature,
   setPreRecordTimeSignature,
+  isMIDIRecording,
+  activeMIDIDevice,
+  midiDevices,
+  midiReady,
+  onConnectMIDIDevice,
+  onDisconnectMIDI,
 }: TopBarProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
+  const [customBpmStr, setCustomBpmStr] = useState<string>("");
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -88,6 +103,16 @@ export function TopBar({
   }, [isSettingsOpen]);
   
   const currentBpm = isRecorded ? bpm : preRecordBpm;
+
+  // Sincroniza o valor do BPM com o campo de texto local para permitir que o usuário apague tudo ao digitar
+  useEffect(() => {
+    if (currentBpm === "AUTO") {
+      setCustomBpmStr("");
+    } else {
+      setCustomBpmStr(currentBpm.toString());
+    }
+  }, [currentBpm, isSettingsOpen]);
+
   const setAnyBpm = (val: number | "AUTO") => isRecorded ? setBpm(val as number) : setPreRecordBpm(val);
   const currentTimeSig = isRecorded ? { numerator: qtValue, denominator: utValue } : preRecordTimeSignature;
   const setAnyTimeSig = (val: TimeSignature) => isRecorded ? (setQtValue(val.numerator), setUtValue(val.denominator)) : setPreRecordTimeSignature(val);
@@ -104,16 +129,38 @@ export function TopBar({
   return (
     <div className="w-full h-[52px] bg-[#1a1a1a] flex items-center justify-between px-4 shrink-0 shadow-md z-50 relative">
       <div className="flex-1 flex justify-start">
-        <button 
-          onClick={onStartRecording}
-          className="flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold text-red-500 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 transition-all hover:scale-[1.02]"
-        >
-          <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse-subtle" />
-          <span>GRAVAR</span>
-        </button>
+        {/* Espaço reservado à esquerda para manter o centro alinhado */}
       </div>
 
-      <div className="flex items-center justify-center gap-1">
+      <div className="flex items-center justify-center gap-2">
+        {/* Record Button */}
+        <div className="bg-black/20 rounded-lg p-1 flex items-center justify-center gap-1">
+          <button 
+            onClick={onStartRecording}
+            className={`p-1.5 rounded-md hover:bg-white/5 transition-colors flex items-center justify-center ${isMIDIRecording ? 'bg-red-500/20' : ''}`}
+            title={isMIDIRecording ? "Parar Gravação MIDI" : "Gravar"}
+          >
+            <div className={`w-3 h-3 rounded-full ${isMIDIRecording ? 'bg-red-500 animate-ping' : 'bg-red-500 animate-pulse-subtle'}`} />
+          </button>
+          {/* MIDI device indicator */}
+          {activeMIDIDevice && (
+            <span className="text-[9px] font-mono text-emerald-400/70 max-w-[80px] truncate hidden sm:block" title={activeMIDIDevice.name}>
+              {activeMIDIDevice.name}
+            </span>
+          )}
+          {midiReady && !activeMIDIDevice && midiDevices && midiDevices.length > 0 && (
+            <select
+              className="text-[9px] font-mono bg-transparent border border-white/10 rounded px-1 py-0.5 text-white/50 cursor-pointer focus:outline-none max-w-[80px] hidden sm:block"
+              value=""
+              onChange={(e) => onConnectMIDIDevice?.(e.target.value)}
+            >
+              <option value="" disabled>MIDI...</option>
+              {midiDevices.map(d => (
+                <option key={d.id} value={d.id} className="bg-zinc-900 text-white">{d.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
         {/* Transport Controls */}
         <div className="flex items-center gap-1 bg-black/20 rounded-lg p-1">
           <button onClick={handleSkipBack} className="p-1.5 rounded-md text-white/50 hover:text-white hover:bg-white/5 transition-colors"><SkipBack size={16} /></button>
@@ -134,17 +181,17 @@ export function TopBar({
           {/* Pills to show current configuration */}
           <div className="flex items-center gap-1.5 ml-2 hidden sm:flex">
             {(currentTimeSig.numerator !== 4 || currentTimeSig.denominator !== 4) && (
-              <span className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[10px] font-mono text-white/60">
+              <span className="px-2 py-1 rounded-md bg-white border border-white text-[10px] font-mono font-semibold text-black">
                 {currentTimeSig.numerator}/{currentTimeSig.denominator}
               </span>
             )}
             {currentBpm !== "AUTO" && (
-              <span className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[10px] font-mono text-white/60">
+              <span className="px-2 py-1 rounded-md bg-white border border-white text-[10px] font-mono font-semibold text-black">
                 {currentBpm} BPM
               </span>
             )}
             {currentTonality !== "AUTO" && (
-              <span className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[10px] font-mono text-white/60">
+              <span className="px-2 py-1 rounded-md bg-white border border-white text-[10px] font-mono font-semibold text-black">
                 Tom: {currentTonality}
               </span>
             )}
@@ -214,16 +261,30 @@ export function TopBar({
                     Auto-detectar
                   </button>
                 )}
-                <div className="grid grid-cols-3 gap-1.5 mt-2">
-                  {COMMON_BPMS.map((b) => (
-                    <button
-                      key={`bpm-${b}`}
-                      onClick={() => setAnyBpm(b)}
-                      className={`py-1.5 rounded text-xs font-medium transition-colors ${currentBpm === b ? "bg-emerald-500/20 text-emerald-400" : "bg-black/40 text-white/60 hover:bg-white/5 hover:text-white"}`}
-                    >
-                      {b}
-                    </button>
-                  ))}
+                <div className="mt-2">
+                  <input 
+                    type="number"
+                    min="40"
+                    max="300"
+                    placeholder="Digite o BPM (ex: 120)"
+                    value={customBpmStr}
+                    onChange={(e) => {
+                      setCustomBpmStr(e.target.value);
+                      const val = parseInt(e.target.value);
+                      if (!isNaN(val) && val > 0) {
+                        setAnyBpm(val);
+                      }
+                    }}
+                    onBlur={() => {
+                      if (customBpmStr === "" && currentBpm !== "AUTO") {
+                        setCustomBpmStr("120");
+                        setAnyBpm(120);
+                      } else if (currentBpm === "AUTO") {
+                        setCustomBpmStr("");
+                      }
+                    }}
+                    className="w-full bg-black/40 border border-white/5 rounded-lg py-2 px-3 text-xs text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/50 transition-colors"
+                  />
                 </div>
               </div>
 

@@ -46,15 +46,26 @@ export const DynamicRing = memo(function DynamicRing({
 
   // Array de luzes com offsets assimétricos (orbitMorph) para quebrar o círculo perfeito
   const lights = [
-    { size: "w-24 h-24 sm:w-32 sm:h-32", hueOffset: 0, orbitMorph: 1.15, blob: "40% 60% 70% 30% / 40% 50% 60% 50%" },
-    { size: "w-32 h-32 sm:w-40 sm:h-40", hueOffset: 25, orbitMorph: 0.85, blob: "60% 40% 30% 70% / 50% 60% 40% 50%" },
-    { size: "w-20 h-20 sm:w-28 sm:h-28", hueOffset: -15, orbitMorph: 1.25, blob: "30% 70% 70% 30% / 30% 30% 70% 70%" },
-    { size: "w-36 h-36 sm:w-48 sm:h-48", hueOffset: 45, orbitMorph: 0.9, blob: "70% 30% 50% 50% / 30% 70% 50% 50%" },
-    { size: "w-24 h-24 sm:w-32 sm:h-32", hueOffset: -30, orbitMorph: 1.1, blob: "50% 50% 30% 70% / 70% 30% 50% 50%" },
-    { size: "w-28 h-28 sm:w-36 sm:h-36", hueOffset: 15, orbitMorph: 0.95, blob: "40% 60% 60% 40% / 60% 40% 60% 40%" },
-    { size: "w-24 h-24 sm:w-32 sm:h-32", hueOffset: -45, orbitMorph: 1.2, blob: "60% 40% 50% 50% / 40% 60% 40% 60%" },
-    { size: "w-20 h-20 sm:w-28 sm:h-28", hueOffset: 30, orbitMorph: 0.8, blob: "30% 70% 40% 60% / 50% 50% 60% 40%" },
+    { size: "w-24 h-24 sm:w-32 sm:h-32", hueOffset: 0,   orbitMorph: 1.15, blob: "28% 72% 65% 35% / 55% 35% 65% 45%" },
+    { size: "w-32 h-32 sm:w-40 sm:h-40", hueOffset: 55,  orbitMorph: 0.85, blob: "72% 28% 20% 80% / 35% 75% 25% 65%" },
+    { size: "w-20 h-20 sm:w-28 sm:h-28", hueOffset: -40, orbitMorph: 1.25, blob: "22% 78% 80% 20% / 20% 25% 75% 80%" },
+    { size: "w-36 h-36 sm:w-48 sm:h-48", hueOffset: 80,  orbitMorph: 0.9,  blob: "80% 20% 35% 65% / 25% 80% 40% 60%" },
+    { size: "w-24 h-24 sm:w-32 sm:h-32", hueOffset: -65, orbitMorph: 1.1,  blob: "45% 55% 18% 82% / 78% 22% 55% 45%" },
+    { size: "w-28 h-28 sm:w-36 sm:h-36", hueOffset: 35,  orbitMorph: 0.95, blob: "33% 67% 75% 25% / 68% 32% 72% 28%" },
+    { size: "w-24 h-24 sm:w-32 sm:h-32", hueOffset: -85, orbitMorph: 1.2,  blob: "75% 25% 40% 60% / 30% 70% 35% 65%" },
+    { size: "w-20 h-20 sm:w-28 sm:h-28", hueOffset: 60,  orbitMorph: 0.8,  blob: "18% 82% 55% 45% / 42% 58% 78% 22%" },
   ];
+
+  // Micro-partículas de poeira/estrela orbitando o anel
+  const particles = Array.from({ length: 18 }, (_, i) => ({
+    angle: (i * 360) / 18 + (i % 3) * 7,        // Distribuição com leve irregularidade
+    distance: 70 + (i % 5) * 14 + (i % 3) * 8,  // Distância orbital variada (70–120px)
+    size: 0.6 + (i % 3) * 0.45,                   // Tamanho: 0.6px – 1.5px
+    hueOffset: ((i * 17) % 60) - 30,              // Variação de cor
+    speed: 25 + (i % 4) * 8,                      // Velocidade orbital (25–49s)
+    delay: -(i * 1.3),                             // Delay do twinkle
+    brightness: 0.4 + (i % 3) * 0.25,             // Brilho base variado
+  }));
 
   return (
     <div 
@@ -132,14 +143,57 @@ export const DynamicRing = memo(function DynamicRing({
         })}
       </div>
 
+      {/* Micro-partículas de poeira estelar orbitando */}
+      {particles.map((p, i) => {
+        const particleHue = baseHue + p.hueOffset;
+        const particleOpacity = hasFreq
+          ? p.brightness + activeIntensity * 0.4
+          : (isActive ? p.brightness * 0.8 : p.brightness * 0.5);
+
+        // Distância reativa: cresce junto com o anel para nunca ficar escondida
+        const dynamicDistance = (p.distance + radiusOffset * 0.8) * scale;
+
+        return (
+          <div
+            key={`particle-${i}`}
+            className="absolute inset-0 flex items-center justify-center animate-spin pointer-events-none"
+            style={{
+              animationDuration: `${p.speed}s`,
+              animationDirection: i % 2 === 0 ? 'normal' : 'reverse',
+            }}
+          >
+            <div
+              className="absolute rounded-full"
+              style={{
+                width: `${p.size}px`,
+                height: `${p.size}px`,
+                backgroundColor: `hsl(${particleHue}, 85%, 75%)`,
+                opacity: particleOpacity,
+                transform: `rotate(${p.angle}deg) translateY(-${dynamicDistance}px)`,
+                animation: `twinkle ${2.5 + (i % 3) * 1.2}s ease-in-out ${p.delay}s infinite`,
+              }}
+            />
+          </div>
+        );
+      })}
+
+      {/* Brilho neon na borda interna (entre o anel e o núcleo) */}
+      <div 
+        className="absolute inset-6 sm:inset-10 rounded-full pointer-events-none z-[9] transition-all duration-700"
+        style={{
+          background: `radial-gradient(circle, transparent 50%, hsla(${baseHue}, 90%, 80%, ${hasFreq ? 0.15 + activeIntensity * 0.25 : (isActive ? 0.08 : 0.04)}) 75%, transparent 100%)`,
+          transform: `scale(${scale * 0.9})`,
+          filter: `blur(${3 + activeIntensity * 4}px)`,
+        }}
+      />
+
       {/* Núcleo de absorção (Traz profundidade ao centro) */}
       <div 
         className="absolute inset-8 sm:inset-12 rounded-full bg-black transition-all duration-700 z-10"
         style={{
-          opacity: isActive ? 0.95 : 0.8,
+          opacity: 1,
           transform: `scale(${scale * 0.85})`,
-          // Sombra interna que reage à intensidade
-          boxShadow: hasFreq ? `0 0 ${30 + activeIntensity * 50}px ${10 + activeIntensity * 30}px rgba(0,0,0,0.9) inset` : 'none',
+          boxShadow: `0 0 ${40 + activeIntensity * 60}px ${15 + activeIntensity * 40}px rgba(0,0,0,0.95) inset`,
           filter: `blur(${6 + activeIntensity * 10}px)`
         }}
       />

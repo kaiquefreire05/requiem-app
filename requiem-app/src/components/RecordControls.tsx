@@ -43,6 +43,15 @@ export function RecordControls({
   
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
+  const [customBpmStr, setCustomBpmStr] = useState<string>("");
+
+  useEffect(() => {
+    if (preRecordBpm === "AUTO") {
+      setCustomBpmStr("");
+    } else {
+      setCustomBpmStr(preRecordBpm.toString());
+    }
+  }, [preRecordBpm, isSettingsOpen]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -128,16 +137,30 @@ export function RecordControls({
               >
                 Detectar automaticamente
               </button>
-              <div className="grid grid-cols-3 gap-1.5 mt-2">
-                {COMMON_BPMS.map((b) => (
-                  <button
-                    key={`bpm-${b}`}
-                    onClick={() => setPreRecordBpm(b)}
-                    className={`py-1.5 rounded text-xs font-medium transition-colors ${preRecordBpm === b ? "bg-emerald-500/20 text-emerald-400" : "bg-black/40 text-white/60 hover:bg-white/5 hover:text-white"}`}
-                  >
-                    {b}
-                  </button>
-                ))}
+              <div className="mt-2">
+                <input 
+                  type="number"
+                  min="40"
+                  max="300"
+                  placeholder="Digite o BPM (ex: 120)"
+                  value={customBpmStr}
+                  onChange={(e) => {
+                    setCustomBpmStr(e.target.value);
+                    const val = parseInt(e.target.value);
+                    if (!isNaN(val) && val > 0) {
+                      setPreRecordBpm(val);
+                    }
+                  }}
+                  onBlur={() => {
+                    if (customBpmStr === "" && preRecordBpm !== "AUTO") {
+                      setCustomBpmStr("120");
+                      setPreRecordBpm(120);
+                    } else if (preRecordBpm === "AUTO") {
+                      setCustomBpmStr("");
+                    }
+                  }}
+                  className="w-full bg-black/40 border border-white/5 rounded-lg py-2 px-3 text-xs text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/50 transition-colors"
+                />
               </div>
             </div>
 
@@ -168,11 +191,10 @@ export function RecordControls({
 
         {/* Main Input Bar */}
         <div 
-          onClick={!isInputDisabled && !isSettingsOpen ? handleMainButtonClick : undefined}
           className={`
             relative group flex items-center w-full backdrop-blur-sm
             py-2 px-3 sm:py-2.5 sm:px-4 transition-all duration-300
-            ${!isInputDisabled ? 'cursor-pointer hover:brightness-110 hover:shadow-[0_4px_30px_rgba(255,255,255,0.05)]' : 'opacity-70 cursor-not-allowed'}
+            ${!isInputDisabled ? '' : 'opacity-70'}
             ${isRecording ? 'shadow-[0_4px_30px_rgba(220,38,38,0.15)]' : ''}
           `}
           style={{
@@ -200,7 +222,7 @@ export function RecordControls({
                    e.stopPropagation();
                    setIsSettingsOpen(!isSettingsOpen);
                  }}
-                 className={`flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 bg-neutral-900 border border-white/10 rounded-xl transition-all duration-300 ${isSettingsOpen ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400' : 'hover:bg-neutral-800 text-white/70 hover:text-white'}`}
+                 className={`flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 bg-transparent transition-all duration-300 ${isSettingsOpen ? 'text-emerald-400' : 'text-white/50 hover:text-white/80'}`}
                >
                  <Plus className={`w-5 h-5 transition-transform duration-300 ${isSettingsOpen ? 'rotate-45' : ''}`} />
                </button>
@@ -210,17 +232,17 @@ export function RecordControls({
             {!isRecording && !isProcessing && (
               <div className="flex items-center gap-1.5 hidden sm:flex">
                 {(preRecordTimeSignature.numerator !== 4 || preRecordTimeSignature.denominator !== 4) && (
-                  <span className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[10px] font-mono text-white/60">
+                  <span className="px-2 py-1 rounded-md bg-white border border-white text-[10px] font-mono font-semibold text-black">
                     {preRecordTimeSignature.numerator}/{preRecordTimeSignature.denominator}
                   </span>
                 )}
                 {preRecordBpm !== "AUTO" && (
-                  <span className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[10px] font-mono text-white/60">
+                  <span className="px-2 py-1 rounded-md bg-white border border-white text-[10px] font-mono font-semibold text-black">
                     {preRecordBpm} BPM
                   </span>
                 )}
                 {preRecordTonality !== "AUTO" && (
-                  <span className="px-2 py-1 rounded-md bg-white/5 border border-white/10 text-[10px] font-mono text-white/60">
+                  <span className="px-2 py-1 rounded-md bg-white border border-white text-[10px] font-mono font-semibold text-black">
                     Tom: {preRecordTonality}
                   </span>
                 )}
@@ -238,15 +260,24 @@ export function RecordControls({
             </span>
           </div>
 
-          <div className={`flex-shrink-0 w-12 h-12 flex items-center justify-center rounded-xl transition-all duration-300 ${isRecording ? 'bg-red-500/20 text-red-400' : 'bg-white/5 text-white/40 group-hover:bg-white/10 group-hover:text-white/80'}`}>
+          <button 
+            type="button"
+            disabled={isInputDisabled}
+            onClick={!isInputDisabled && !isSettingsOpen ? handleMainButtonClick : undefined}
+            className={`flex-shrink-0 w-12 h-12 flex items-center justify-center rounded-xl transition-all duration-300 ${!isInputDisabled && !isSettingsOpen ? 'cursor-pointer hover:scale-105' : 'cursor-not-allowed'} ${isRecording ? 'bg-red-500/20 text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.4)]' : 'bg-white/5 text-white/50 hover:bg-white/15 hover:text-white'}`}
+          >
             {isRecording ? (
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
             ) : (
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
             )}
-          </div>
+          </button>
         </div>
 
+        {/* AI Disclaimer */}
+        <p className="text-center text-[11px] text-white/30 mt-3 font-medium tracking-wide">
+          O Requiem é uma IA e pode cometer erros
+        </p>
       </div>
     </div>
   );

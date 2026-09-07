@@ -1,5 +1,5 @@
 import requiemLogo from "../assets/requiem-logo-full.svg";
-import { PanelLeft } from "lucide-react";
+import { PanelLeft, SquarePen, Search, LayoutGrid } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -17,6 +17,7 @@ interface SidebarProps {
   onSessionChange: (session: ChatSession | null) => void;
   onSessionRename: (id: string, newTitle: string) => void;
   activeSession?: ChatSession | null;
+  onSearchClick: () => void;
 }
 
 export function Sidebar({
@@ -26,6 +27,7 @@ export function Sidebar({
   onSessionChange,
   onSessionRename,
   activeSession,
+  onSearchClick,
 }: SidebarProps) {
   const { user, logout } = useAuth();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -51,20 +53,17 @@ export function Sidebar({
   }, [loadSessions]);
 
   // Reload sessions list whenever activeSession changes to a new value
-  // (e.g., auto-created from App.tsx after harmony generation)
   const prevActiveSessionIdRef = useRef<string | null>(null);
   useEffect(() => {
     const prevId = prevActiveSessionIdRef.current;
     const currId = activeSession?.id ?? null;
     if (currId && currId !== prevId) {
-      // A new session appeared — reload list so it shows up in sidebar
       loadSessions();
     }
     prevActiveSessionIdRef.current = currId;
   }, [activeSession?.id, loadSessions]);
 
   const handleNewSession = async () => {
-    // Conta quantas sessões já começam com "Nova Composição" para evitar duplicatas
     const BASE = 'Nova Composição';
     const existingCount = sessions.filter(s => s.title === BASE || s.title.startsWith(`${BASE} (`)).length;
     const title = existingCount === 0 ? BASE : `${BASE} (${existingCount + 1})`;
@@ -74,7 +73,6 @@ export function Sidebar({
       setSessions(prev => [session, ...prev]);
       onSessionChange(session);
     } catch {
-      // If backend is down, create a local-only session
       const localSession: ChatSession = {
         id: Date.now().toString(),
         title,
@@ -117,33 +115,6 @@ export function Sidebar({
     setRenamingId(null);
   };
 
-  // Group sessions by date
-  const groupedSessions = sessions.reduce<Record<string, ChatSession[]>>((acc, session) => {
-    const date = new Date(session.updatedAt);
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const sevenDaysAgo = new Date(today);
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-    let group: string;
-    if (date.toDateString() === today.toDateString()) {
-      group = 'Hoje';
-    } else if (date.toDateString() === yesterday.toDateString()) {
-      group = 'Ontem';
-    } else if (date >= sevenDaysAgo) {
-      group = 'Últimos 7 dias';
-    } else {
-      group = 'Mais antigo';
-    }
-
-    if (!acc[group]) acc[group] = [];
-    acc[group].push(session);
-    return acc;
-  }, {});
-
-  const groupOrder = ['Hoje', 'Ontem', 'Últimos 7 dias', 'Mais antigo'];
-
   return (
     <aside
       className={`flex flex-col bg-[#101010] transition-all duration-300 ease-in-out relative z-20 ${
@@ -163,31 +134,53 @@ export function Sidebar({
         <div className={`ml-2 flex items-center overflow-hidden transition-opacity duration-300 ${
           isSidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0'
         }`}>
-          <img src={requiemLogo} alt="Requiem Logo" className="h-7 w-auto drop-shadow-[0_0_8px_rgba(220,38,38,0.5)]" />
+          <img 
+            src={requiemLogo} 
+            alt="Requiem Logo" 
+            className="h-7 w-auto drop-shadow-[0_0_8px_rgba(220,38,38,0.5)]" 
+          />
         </div>
       </div>
 
-      {/* New Composition Button */}
-      <div className="px-3 mt-8">
+      {/* Top Actions */}
+      <div className="px-3 mt-6 space-y-1">
         <button
           onClick={handleNewSession}
-          className={`flex items-center p-2.5 rounded-full bg-white/5 hover:bg-white/10 transition-all border border-white/5 ${
-            isSidebarOpen ? 'w-full rounded-2xl' : 'w-11 justify-center'
+          className={`flex items-center p-2.5 rounded-lg hover:bg-white/10 transition-all ${
+            isSidebarOpen ? 'w-full' : 'w-11 justify-center'
           }`}
         >
-          <svg className="w-5 h-5 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-          </svg>
-          <span className={`ml-3 text-sm font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${
+          <SquarePen className="w-5 h-5 text-white/80 flex-shrink-0" strokeWidth={1.5} />
+          <span className={`ml-3 text-sm font-medium text-white/90 whitespace-nowrap overflow-hidden transition-all duration-300 ${
             isSidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0 hidden'
           }`}>
-            Nova Composição
+            Nova composição
+          </span>
+        </button>
+
+        <button
+          onClick={onSearchClick}
+          className={`flex items-center p-2.5 rounded-lg hover:bg-white/10 transition-all ${
+            isSidebarOpen ? 'w-full' : 'w-11 justify-center'
+          }`}
+        >
+          <Search className="w-5 h-5 text-white/80 flex-shrink-0" strokeWidth={1.5} />
+          <span className={`ml-3 text-sm font-medium text-white/90 whitespace-nowrap overflow-hidden transition-all duration-300 ${
+            isSidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0 hidden'
+          }`}>
+            Pesquisar composições
           </span>
         </button>
       </div>
 
       {/* Sessions list */}
       <div className="flex-1 overflow-y-auto mt-8 px-3 scrollbar-hide">
+        {isSidebarOpen && (
+          <div className="mb-3 ml-2">
+            <h3 className="text-sm font-medium text-white/60">Recentes</h3>
+          </div>
+        )}
+        
         {isSidebarOpen && (
           <>
             {isLoadingSessions ? (
@@ -198,64 +191,52 @@ export function Sidebar({
               </div>
             ) : sessions.length === 0 ? (
               <p className="text-xs text-white/25 text-center mt-4 px-2">
-                Nenhuma composição ainda.<br />Clique em "Nova Composição" para começar.
+                Nenhuma composição ainda.<br />Clique em "Nova composição" para começar.
               </p>
             ) : (
-              groupOrder
-                .filter(g => groupedSessions[g]?.length > 0)
-                .map(group => (
-                  <div key={group} className="mb-4">
-                    <h3 className="text-[10px] font-semibold text-white/30 mb-2 ml-2 uppercase tracking-wider">
-                      {group}
-                    </h3>
-                    <ul className="space-y-0.5">
-                      {groupedSessions[group].map(session => (
-                        <li key={session.id} className="group relative">
-                          {renamingId === session.id ? (
-                            <input
-                              autoFocus
-                              type="text"
-                              value={renameValue}
-                              onChange={e => setRenameValue(e.target.value)}
-                              onBlur={() => handleCommitRename(session.id)}
-                              onKeyDown={e => {
-                                if (e.key === 'Enter') handleCommitRename(session.id);
-                                if (e.key === 'Escape') setRenamingId(null);
-                              }}
-                              className="w-full px-3 py-2 text-sm text-white bg-white/10 border border-red-500/40 rounded-lg outline-none"
-                            />
-                          ) : (
-                            <button
-                              onClick={() => onSessionChange(session)}
-                              onDoubleClick={e => handleStartRename(e, session)}
-                              className={`flex items-center w-full px-3 py-2 rounded-lg text-left transition-colors group ${
-                                activeSessionId === session.id
-                                  ? 'bg-white/10 text-white'
-                                  : 'text-white/60 hover:bg-white/5 hover:text-white'
-                              }`}
-                            >
-                              <svg className="w-3.5 h-3.5 flex-shrink-0 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-                              </svg>
-                              <span className="ml-2.5 text-sm truncate flex-1">{session.title}</span>
+              <ul className="space-y-0.5">
+                {sessions.map(session => (
+                  <li key={session.id} className="group relative">
+                    {renamingId === session.id ? (
+                      <input
+                        autoFocus
+                        type="text"
+                        value={renameValue}
+                        onChange={e => setRenameValue(e.target.value)}
+                        onBlur={() => handleCommitRename(session.id)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') handleCommitRename(session.id);
+                          if (e.key === 'Escape') setRenamingId(null);
+                        }}
+                        className="w-full px-3 py-2 text-sm text-white bg-white/10 border border-white/20 rounded-lg outline-none"
+                      />
+                    ) : (
+                      <button
+                        onClick={() => onSessionChange(session)}
+                        onDoubleClick={e => handleStartRename(e, session)}
+                        className={`flex items-center w-full px-3 py-2.5 rounded-lg text-left transition-colors group ${
+                          activeSessionId === session.id
+                            ? 'bg-white/10 text-white'
+                            : 'text-white/60 hover:bg-white/5 hover:text-white'
+                        }`}
+                      >
+                        <span className="text-sm truncate flex-1">{session.title}</span>
 
-                              {/* Delete button (hover) */}
-                              <button
-                                onClick={e => handleDeleteSession(e, session.id)}
-                                className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:text-red-400 ml-1 flex-shrink-0"
-                                title="Excluir"
-                              >
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                              </button>
-                            </button>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))
+                        {/* Delete button (hover) */}
+                        <button
+                          onClick={e => handleDeleteSession(e, session.id)}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:text-white ml-1 flex-shrink-0 text-white/40"
+                          title="Excluir"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
             )}
           </>
         )}
@@ -270,9 +251,7 @@ export function Sidebar({
               activeSessionId === session.id ? 'bg-white/10' : 'hover:bg-white/5'
             }`}
           >
-            <svg className="w-4 h-4 text-white/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-            </svg>
+            <span className="w-2 h-2 rounded-full bg-white/50"></span>
           </button>
         ))}
       </div>
@@ -310,7 +289,7 @@ export function Sidebar({
             </div>
             <button
               onClick={logout}
-              className="flex items-center gap-2 w-full px-3 py-2.5 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+              className="flex items-center gap-2 w-full px-3 py-2.5 text-sm text-white/70 hover:bg-white/10 hover:text-white transition-colors"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />

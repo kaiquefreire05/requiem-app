@@ -29,68 +29,68 @@ export interface TwoTierMarkovModel {
 
 export const HARMONY_GRAPH: Readonly<Record<string, ChordNode>> = {
   // ── Acordes Maiores ────────────────
-  C:  { notes: [0, 4, 7],   allowedTransitions: ["C", "G", "F", "Am", "Dm", "Em", "G7", "C7", "E7", "A7", "D7", "Bdim"] },
-  G:  { notes: [7, 11, 2],  allowedTransitions: ["G", "C", "D", "Em", "Am", "Bm", "D7", "G7", "B7", "E7", "F#dim"] },
-  D:  { notes: [2, 6, 9],   allowedTransitions: ["D", "G", "A", "Bm", "Em", "F#m", "A7", "D7", "F#dim", "E7"] },
-  A:  { notes: [9, 1, 4],   allowedTransitions: ["A", "D", "E", "F#m", "Bm", "C#m", "E7", "A7", "C#dim", "B7"] },
-  E:  { notes: [4, 8, 11],  allowedTransitions: ["E", "A", "B", "C#m", "F#m", "G#m", "B7", "E7", "G#dim"] },
-  B:  { notes: [11, 3, 6],  allowedTransitions: ["B", "E", "F#", "G#m", "C#m", "D#m", "F#7", "B7"] },
-  "F#": { notes: [6, 10, 1],  allowedTransitions: ["F#", "B", "C#", "D#m", "G#m", "F#7", "C#7"] },
-  F:  { notes: [5, 9, 0],   allowedTransitions: ["F", "C", "Bb", "Dm", "Am", "Gm", "C7", "F7", "D7", "A7"] },
-  Bb: { notes: [10, 2, 5],  allowedTransitions: ["Bb", "F", "Eb", "Gm", "Dm", "Cm", "F7", "Bb7", "D7"] },
-  Eb: { notes: [3, 7, 10],  allowedTransitions: ["Eb", "Bb", "Ab", "Cm", "Gm", "Fm", "Bb7", "Eb7", "G7"] },
-  Ab: { notes: [8, 0, 3],   allowedTransitions: ["Ab", "Eb", "Db", "Fm", "Cm", "Bbm", "Eb7", "Ab7"] },
-  Db: { notes: [1, 5, 8],   allowedTransitions: ["Db", "Ab", "Gb", "Bbm", "Fm", "Ab7", "Db7"] },
+  C: { notes: [0, 4, 7], allowedTransitions: ["C", "G", "F", "Am", "Dm", "Em", "G7", "C7", "E7", "A7", "D7", "Bdim"] },
+  G: { notes: [7, 11, 2], allowedTransitions: ["G", "C", "D", "Em", "Am", "Bm", "D7", "G7", "B7", "E7", "F#dim"] },
+  D: { notes: [2, 6, 9], allowedTransitions: ["D", "G", "A", "Bm", "Em", "F#m", "A7", "D7", "F#dim", "E7"] },
+  A: { notes: [9, 1, 4], allowedTransitions: ["A", "D", "E", "F#m", "Bm", "C#m", "E7", "A7", "C#dim", "B7"] },
+  E: { notes: [4, 8, 11], allowedTransitions: ["E", "A", "B", "C#m", "F#m", "G#m", "B7", "E7", "G#dim"] },
+  B: { notes: [11, 3, 6], allowedTransitions: ["B", "E", "F#", "G#m", "C#m", "D#m", "F#7", "B7"] },
+  "F#": { notes: [6, 10, 1], allowedTransitions: ["F#", "B", "C#", "D#m", "G#m", "F#7", "C#7"] },
+  F: { notes: [5, 9, 0], allowedTransitions: ["F", "C", "Bb", "Dm", "Am", "Gm", "C7", "F7", "D7", "A7"] },
+  Bb: { notes: [10, 2, 5], allowedTransitions: ["Bb", "F", "Eb", "Gm", "Dm", "Cm", "F7", "Bb7", "D7"] },
+  Eb: { notes: [3, 7, 10], allowedTransitions: ["Eb", "Bb", "Ab", "Cm", "Gm", "Fm", "Bb7", "Eb7", "G7"] },
+  Ab: { notes: [8, 0, 3], allowedTransitions: ["Ab", "Eb", "Db", "Fm", "Cm", "Bbm", "Eb7", "Ab7"] },
+  Db: { notes: [1, 5, 8], allowedTransitions: ["Db", "Ab", "Gb", "Bbm", "Fm", "Ab7", "Db7"] },
 
   // ── Acordes Menores ───────────
-  Am: { notes: [9, 0, 4],   allowedTransitions: ["Am", "C", "Dm", "Em", "F", "G", "E7", "G7", "A7", "Bdim", "D7"] },
-  Em: { notes: [4, 7, 11],  allowedTransitions: ["Em", "G", "Am", "C", "D", "Bm", "B7", "D7", "F#dim", "E7"] },
-  Bm: { notes: [11, 2, 6],  allowedTransitions: ["Bm", "D", "Em", "G", "A", "F#m", "F#7", "A7", "F#dim"] },
-  "F#m": { notes: [6, 9, 1],  allowedTransitions: ["F#m", "A", "Bm", "D", "E", "C#m", "C#7", "E7", "C#dim"] },
-  "C#m": { notes: [1, 4, 8],  allowedTransitions: ["C#m", "E", "F#m", "A", "B", "G#m", "G#7", "B7", "G#dim"] },
+  Am: { notes: [9, 0, 4], allowedTransitions: ["Am", "C", "Dm", "Em", "F", "G", "E7", "G7", "A7", "Bdim", "D7"] },
+  Em: { notes: [4, 7, 11], allowedTransitions: ["Em", "G", "Am", "C", "D", "Bm", "B7", "D7", "F#dim", "E7"] },
+  Bm: { notes: [11, 2, 6], allowedTransitions: ["Bm", "D", "Em", "G", "A", "F#m", "F#7", "A7", "F#dim"] },
+  "F#m": { notes: [6, 9, 1], allowedTransitions: ["F#m", "A", "Bm", "D", "E", "C#m", "C#7", "E7", "C#dim"] },
+  "C#m": { notes: [1, 4, 8], allowedTransitions: ["C#m", "E", "F#m", "A", "B", "G#m", "G#7", "B7", "G#dim"] },
   "G#m": { notes: [8, 11, 3], allowedTransitions: ["G#m", "B", "C#m", "E", "F#", "D#m", "D#7", "F#7"] },
   "D#m": { notes: [3, 6, 10], allowedTransitions: ["D#m", "F#", "G#m", "B", "D#7", "A#7"] },
-  Dm: { notes: [2, 5, 9],   allowedTransitions: ["Dm", "F", "Am", "C", "Bb", "Gm", "A7", "C7", "D7", "Bdim"] },
-  Gm: { notes: [7, 10, 2],  allowedTransitions: ["Gm", "Bb", "Dm", "F", "Eb", "Cm", "D7", "F7", "Bb7"] },
-  Cm: { notes: [0, 3, 7],   allowedTransitions: ["Cm", "Eb", "Gm", "Bb", "Ab", "Fm", "G7", "Bb7", "Eb7"] },
-  Fm: { notes: [5, 8, 0],   allowedTransitions: ["Fm", "Ab", "Cm", "Eb", "Db", "Bbm", "C7", "Eb7", "Ab7"] },
+  Dm: { notes: [2, 5, 9], allowedTransitions: ["Dm", "F", "Am", "C", "Bb", "Gm", "A7", "C7", "D7", "Bdim"] },
+  Gm: { notes: [7, 10, 2], allowedTransitions: ["Gm", "Bb", "Dm", "F", "Eb", "Cm", "D7", "F7", "Bb7"] },
+  Cm: { notes: [0, 3, 7], allowedTransitions: ["Cm", "Eb", "Gm", "Bb", "Ab", "Fm", "G7", "Bb7", "Eb7"] },
+  Fm: { notes: [5, 8, 0], allowedTransitions: ["Fm", "Ab", "Cm", "Eb", "Db", "Bbm", "C7", "Eb7", "Ab7"] },
   Bbm: { notes: [10, 1, 5], allowedTransitions: ["Bbm", "Db", "Fm", "Ab", "F7", "Ab7", "Db7"] },
 
   // ── Acordes Dominantes ──────
-  G7:  { notes: [7, 11, 2, 5],  allowedTransitions: ["C", "Am", "Cm", "G7", "C7", "F", "Dm"] },
-  D7:  { notes: [2, 6, 9, 0],   allowedTransitions: ["G", "Em", "Gm", "D7", "G7", "C", "Am"] },
-  A7:  { notes: [9, 1, 4, 7],   allowedTransitions: ["D", "Bm", "Dm", "A7", "D7", "G", "Em"] },
-  E7:  { notes: [4, 8, 11, 2],  allowedTransitions: ["A", "F#m", "Am", "E7", "A7", "D", "Bm"] },
-  B7:  { notes: [11, 3, 6, 9],  allowedTransitions: ["E", "C#m", "Em", "B7", "E7", "A", "F#m"] },
+  G7: { notes: [7, 11, 2, 5], allowedTransitions: ["C", "Am", "Cm", "G7", "C7", "F", "Dm"] },
+  D7: { notes: [2, 6, 9, 0], allowedTransitions: ["G", "Em", "Gm", "D7", "G7", "C", "Am"] },
+  A7: { notes: [9, 1, 4, 7], allowedTransitions: ["D", "Bm", "Dm", "A7", "D7", "G", "Em"] },
+  E7: { notes: [4, 8, 11, 2], allowedTransitions: ["A", "F#m", "Am", "E7", "A7", "D", "Bm"] },
+  B7: { notes: [11, 3, 6, 9], allowedTransitions: ["E", "C#m", "Em", "B7", "E7", "A", "F#m"] },
   "F#7": { notes: [6, 10, 1, 4], allowedTransitions: ["B", "G#m", "Bm", "F#7", "B7", "E", "C#m"] },
   "C#7": { notes: [1, 5, 8, 11], allowedTransitions: ["F#", "D#m", "F#m", "C#7", "F#7", "B"] },
-  C7:  { notes: [0, 4, 7, 10],  allowedTransitions: ["F", "Dm", "Fm", "C7", "F7", "Bb", "Gm"] },
-  F7:  { notes: [5, 9, 0, 3],   allowedTransitions: ["Bb", "Gm", "Bbm", "F7", "Bb7", "Eb", "Cm"] },
-  Bb7: { notes: [10, 2, 5, 8],  allowedTransitions: ["Eb", "Cm", "Bb7", "Eb7", "Ab", "Fm"] },
-  Eb7: { notes: [3, 7, 10, 1],  allowedTransitions: ["Ab", "Fm", "Eb7", "Ab7", "Db"] },
-  Ab7: { notes: [8, 0, 3, 6],   allowedTransitions: ["Db", "Bbm", "Ab7", "Db7"] },
-  Db7: { notes: [1, 5, 8, 11],  allowedTransitions: ["Gb", "Db7", "Ab", "Fm"] },
+  C7: { notes: [0, 4, 7, 10], allowedTransitions: ["F", "Dm", "Fm", "C7", "F7", "Bb", "Gm"] },
+  F7: { notes: [5, 9, 0, 3], allowedTransitions: ["Bb", "Gm", "Bbm", "F7", "Bb7", "Eb", "Cm"] },
+  Bb7: { notes: [10, 2, 5, 8], allowedTransitions: ["Eb", "Cm", "Bb7", "Eb7", "Ab", "Fm"] },
+  Eb7: { notes: [3, 7, 10, 1], allowedTransitions: ["Ab", "Fm", "Eb7", "Ab7", "Db"] },
+  Ab7: { notes: [8, 0, 3, 6], allowedTransitions: ["Db", "Bbm", "Ab7", "Db7"] },
+  Db7: { notes: [1, 5, 8, 11], allowedTransitions: ["Gb", "Db7", "Ab", "Fm"] },
   "D#7": { notes: [3, 7, 10, 1], allowedTransitions: ["G#m", "D#7", "G#", "F"] },
-  "G#7": { notes: [8, 0, 3, 6],  allowedTransitions: ["C#m", "G#7", "C#", "F#m"] },
+  "G#7": { notes: [8, 0, 3, 6], allowedTransitions: ["C#m", "G#7", "C#", "F#m"] },
   "A#7": { notes: [10, 2, 5, 8], allowedTransitions: ["D#m", "A#7", "D#", "G#m"] },
 
   // ── Acordes Diminutos ──────
-  Bdim:   { notes: [11, 2, 5],  allowedTransitions: ["C", "Am", "G7", "Dm", "F", "Em"] },
-  "F#dim": { notes: [6, 9, 0],   allowedTransitions: ["G", "Em", "D7", "Am", "C", "Bm"] },
-  "C#dim": { notes: [1, 4, 7],   allowedTransitions: ["D", "Bm", "A7", "Em", "G", "F#m"] },
-  "G#dim": { notes: [8, 11, 2],  allowedTransitions: ["A", "F#m", "E7", "Bm", "D", "C#m"] },
-  "D#dim": { notes: [3, 6, 9],   allowedTransitions: ["E", "C#m", "B7", "F#m", "A"] },
-  "A#dim": { notes: [10, 1, 4],  allowedTransitions: ["B", "G#m", "F#7", "C#m", "E"] },
-  Edim:   { notes: [4, 7, 10],  allowedTransitions: ["F", "Dm", "C7", "Am", "Bb", "Gm"] },
-  Adim:   { notes: [9, 0, 3],   allowedTransitions: ["Bb", "Gm", "F7", "Dm", "Eb", "Cm"] },
-  Ddim:   { notes: [2, 5, 8],   allowedTransitions: ["Eb", "Cm", "Bb7", "Gm", "Ab", "Fm"] },
-  Gdim:   { notes: [7, 10, 1],  allowedTransitions: ["Ab", "Fm", "Eb7", "Cm", "Db"] },
-  Cdim:   { notes: [0, 3, 6],   allowedTransitions: ["Db", "Bbm", "Ab7", "Fm"] },
-  Fdim:   { notes: [5, 8, 11],  allowedTransitions: ["Gb", "Ebm", "Db7", "Bbm"] },
+  Bdim: { notes: [11, 2, 5], allowedTransitions: ["C", "Am", "G7", "Dm", "F", "Em"] },
+  "F#dim": { notes: [6, 9, 0], allowedTransitions: ["G", "Em", "D7", "Am", "C", "Bm"] },
+  "C#dim": { notes: [1, 4, 7], allowedTransitions: ["D", "Bm", "A7", "Em", "G", "F#m"] },
+  "G#dim": { notes: [8, 11, 2], allowedTransitions: ["A", "F#m", "E7", "Bm", "D", "C#m"] },
+  "D#dim": { notes: [3, 6, 9], allowedTransitions: ["E", "C#m", "B7", "F#m", "A"] },
+  "A#dim": { notes: [10, 1, 4], allowedTransitions: ["B", "G#m", "F#7", "C#m", "E"] },
+  Edim: { notes: [4, 7, 10], allowedTransitions: ["F", "Dm", "C7", "Am", "Bb", "Gm"] },
+  Adim: { notes: [9, 0, 3], allowedTransitions: ["Bb", "Gm", "F7", "Dm", "Eb", "Cm"] },
+  Ddim: { notes: [2, 5, 8], allowedTransitions: ["Eb", "Cm", "Bb7", "Gm", "Ab", "Fm"] },
+  Gdim: { notes: [7, 10, 1], allowedTransitions: ["Ab", "Fm", "Eb7", "Cm", "Db"] },
+  Cdim: { notes: [0, 3, 6], allowedTransitions: ["Db", "Bbm", "Ab7", "Fm"] },
+  Fdim: { notes: [5, 8, 11], allowedTransitions: ["Gb", "Ebm", "Db7", "Bbm"] },
 
   // ── Aliases Enharmônicos ──────────────────────────────
   "C#": { notes: [1, 5, 8], allowedTransitions: ["Db", "Ab", "Gb", "Bbm", "Fm", "Ab7", "Db7"] },
-  Gb: { notes: [6, 10, 1],  allowedTransitions: ["F#", "B", "C#", "D#m", "G#m", "F#7", "C#7"] },
+  Gb: { notes: [6, 10, 1], allowedTransitions: ["F#", "B", "C#", "D#m", "G#m", "F#7", "C#7"] },
   "G#": { notes: [8, 0, 3], allowedTransitions: ["Ab", "Eb", "Db", "Fm", "Cm", "Bbm", "Eb7", "Ab7"] },
   "D#": { notes: [3, 7, 10], allowedTransitions: ["Eb", "Bb", "Ab", "Cm", "Gm", "Fm", "Bb7", "Eb7", "G7"] },
   Ebm: { notes: [3, 6, 10], allowedTransitions: ["D#m", "F#", "G#m", "B", "D#7", "A#7"] },
@@ -114,11 +114,11 @@ const splitCinematic = (roman: string): { baseRoman: string, extension: string }
   if (HARMONY_GRAPH_BASES_ROMAN.has(roman)) {
     return { baseRoman: roman, extension: "none" };
   }
-  
+
   // Caso contrário, isola a raiz (I, vi, etc) do sufixo (add9, maj7, etc)
   const match = roman.match(/^([b#]?(?:III|iii|II|ii|IV|iv|VIII|viii|VII|vii|VI|vi|V|v|I|i))(.*)$/);
   if (!match) return { baseRoman: roman, extension: "none" };
-  
+
   const base = match[1];
   const suffix = match[2];
 
@@ -158,7 +158,7 @@ const extractTwoTierDataset = (modules: Record<string, ProgressionData>): TwoTie
 
 export const buildTwoTierMarkovModel = (datasets: TwoTierDatasets): TwoTierMarkovModel => {
   const { baseProgressions, suffixData } = datasets;
-  const ALPHA = 0.1;
+  const ALPHA = 0.01; // Suavização para a matriz BASE (mantém)
 
   // -- Matriz Base --
   const baseCounts: Record<string, Record<string, number>> = {};
@@ -196,8 +196,10 @@ export const buildTwoTierMarkovModel = (datasets: TwoTierDatasets): TwoTierMarko
   }
 
   // -- Matriz de Sufixos --
+  const SUFFIX_ALPHA = 0; // Removido suavização (0) para garantir que só use extensões que REALMENTE apareceram no dataset
   const suffixCounts: Record<string, Record<string, number>> = {};
-  const allExtensions = new Set<string>(["none", "add9", "madd9", "sus4", "sus2", "maj7", "m7b5", "aug", "m7", "7", "11", "m11", "5"]);
+  // Removidos: "aug", "11", "m11", "5" — raramente aparecem na música tonal e poluem as gerações
+  const allExtensions = new Set<string>(["none", "7", "m7", "maj7", "sus4", "sus2", "add9", "dim", "m7b5"]);
 
   for (const sProg of suffixData) {
     for (const item of sProg) {
@@ -209,16 +211,18 @@ export const buildTwoTierMarkovModel = (datasets: TwoTierDatasets): TwoTierMarko
 
   const extensionsArray = Array.from(allExtensions);
   const suffixMatrix: Record<string, Record<string, number>> = {};
-  
+
   for (const [baseState, extensions] of Object.entries(suffixCounts)) {
     suffixMatrix[baseState] = {};
     let totalExt = 0;
     for (const ext of extensionsArray) {
-      const count = (extensions[ext] ?? 0) + ALPHA;
-      suffixMatrix[baseState][ext] = count;
-      totalExt += count;
+      const count = (extensions[ext] ?? 0) + SUFFIX_ALPHA;
+      if (count > 0) {
+        suffixMatrix[baseState][ext] = count;
+        totalExt += count;
+      }
     }
-    for (const ext of extensionsArray) {
+    for (const ext of Object.keys(suffixMatrix[baseState])) {
       suffixMatrix[baseState][ext] /= totalExt;
     }
   }
@@ -235,21 +239,46 @@ export const markovModel: TwoTierMarkovModel = buildTwoTierMarkovModel(twoTierDa
 
 const WEIGHT_IN_CHORD = 2.0;
 const WEIGHT_ROOT_BONUS = 1.5;
-const WEIGHT_OUT_PENALTY = 0.5;
-const WEIGHT_STRONG_BEAT = 3.0;
+const WEIGHT_OUT_PENALTY = 2.5;      // Penaliza fortemente acordes que conflitam com a melodia
+const WEIGHT_STRONG_BEAT = 4.0;      // Prioridade máxima para notas nos tempos fortes
 const WEIGHT_WEAK_BEAT = 0.5;
 const BEAT_MARGIN_SEC = 0.15;
-const REGISTER_LOW_THRESHOLD = 48; 
-const REGISTER_HIGH_THRESHOLD = 72; 
+const REGISTER_LOW_THRESHOLD = 48;
+const REGISTER_HIGH_THRESHOLD = 72;
 const REGISTER_PENALTY = 0.2;
 const REGISTER_BONUS = 1.5;
 const DENSITY_THRESHOLD = 8;
-const ORNAMENT_PENALTY_MULTIPLIER = 0.2; 
+const ORNAMENT_PENALTY_MULTIPLIER = 0.2;
 const LEAP_THRESHOLD = 7;
 const TENSION_BONUS = 1.5;
 
-const WEIGHT_MARKOV = 20.0;
+const WEIGHT_MARKOV = 100.0;          // Peso massivo para forçar a IA a replicar as progressões do dataset de músicas reais
 const THRESHOLD_MODAL_INTERCHANGE = 0.05;
+const TRIAD_BONUS = 3.0;              // Bônus para tríades puras (3 notas) — favorece acordes limpos
+const COMPLEXITY_PENALTY_PER_NOTE = 5.0; // Penalidade por nota extra além de 3 — desencoraja extensões
+
+const PENALTY_REPETITION = 15.0;        // Penalidade moderada para repetir a mesma base de acorde 1 vez
+const PENALTY_SEVERE_REPETITION = 50.0; // Penalidade massiva para repetir a mesma base 3 vezes seguidas
+
+// ── Cadência Final (Heurísticas de Encerramento) ─────────
+const WEIGHT_CADENCE_PREP = 8.0;        // Bônus para V/V7/IV na penúltima janela (prepara tensão gravitacional)
+const WEIGHT_FINAL_RESOLUTION = 50.0;   // Peso massivo para a tônica (I ou i) na última janela
+const PENALTY_FINAL_TENSION = -40.0;    // Penalidade esmagadora para dominantes/diminutos na última janela
+
+// ─────────────────────────────────────────────────────────
+//  Cadence Context — Consciência Temporal
+// ─────────────────────────────────────────────────────────
+//  Flags booleanas que indicam se a janela atual é a
+//  penúltima ou a última da composição. Passadas para
+//  determineNextChord para orquestrar o encerramento.
+// ─────────────────────────────────────────────────────────
+
+export interface CadenceContext {
+  /** True se esta é a penúltima janela (preparação: V ou IV) */
+  readonly isPenultimateWindow: boolean;
+  /** True se esta é a última janela (resolução: I) */
+  readonly isFinalWindow: boolean;
+}
 
 // ─────────────────────────────────────────────────────────
 //  7. Avaliação de Notas
@@ -303,7 +332,7 @@ const lookupStyleProbability = (
 ): number => {
   if (state2 && matrix[state2]?.[targetState] !== undefined) return matrix[state2][targetState];
   if (matrix[state1]?.[targetState] !== undefined) return matrix[state1][targetState];
-  return 0; 
+  return 0;
 };
 
 export function determineNextChord(
@@ -312,6 +341,8 @@ export function determineNextChord(
   windowStart: number,
   secondsPerBeat: number,
   model: TwoTierMarkovModel = markovModel,
+  isReroll: boolean = false,
+  cadenceCtx: CadenceContext = { isPenultimateWindow: false, isFinalWindow: false }
 ): { chord: string, velocity: number } {
   const currentChord = chordHistory.length > 0 ? chordHistory[chordHistory.length - 1] : "C";
 
@@ -352,13 +383,12 @@ export function determineNextChord(
 
   // -- O SISTEMA DE VOTAÇÃO TWO-TIER --
   const allBaseCandidates = Object.keys(HARMONY_GRAPH);
-  
-  // Extraímos dinamicamente os sufixos treinados do modelo.
+
+  // Extraímos dinamicamente os sufixos treinados do modelo, apenas aqueles que realmente apareceram (probabilidade > 0)
   const allExtensionsArray = Object.keys(model.suffixMatrix[currRoman] || { "none": 1 });
   if (allExtensionsArray.length === 0) allExtensionsArray.push("none");
 
-  let bestChord = currentChord;
-  let bestScore = -Infinity;
+  const candidates: { chord: string, score: number }[] = [];
 
   for (const candidateBaseName of allBaseCandidates) {
     const candidateRoman = chordToRoman(candidateBaseName, "C");
@@ -378,14 +408,17 @@ export function determineNextChord(
 
     // Se o acorde base já for complexo no grafo (ex: G7, Bdim), evitamos acoplar mais sufixos bizarros.
     const isTriad = !candidateBaseName.includes("7") && !candidateBaseName.includes("dim");
-    const validExtensions = isTriad ? allExtensionsArray : ["none"];
+
+    // Apenas testamos extensões que realmente existem no dataset para este acorde base candidato
+    const candidateExtensions = Object.keys(model.suffixMatrix[baseRoman] || { "none": 1 });
+    const validExtensions = isTriad ? candidateExtensions : ["none"];
 
     for (const ext of validExtensions) {
       const fullChordName = ext === "none" ? candidateBaseName : candidateBaseName + ext;
       const fullChordNotes = getChordPitchClasses(fullChordName);
 
       const suffixStyleProb = model.suffixMatrix[baseRoman]?.[ext] ?? (1.0 / allExtensionsArray.length);
-      
+
       const combinedStyleProb = baseStyleProb * suffixStyleProb;
 
       const noteScore = computeNoteScore(
@@ -399,12 +432,82 @@ export function determineNextChord(
         avgAmplitude
       );
 
-      const finalScore = (noteScore * 1.0) + (combinedStyleProb * WEIGHT_MARKOV);
+      // Bônus para tríades puras (3 notas) — a espinha dorsal da música tonal
+      const triadBonus = fullChordNotes.length === 3 ? TRIAD_BONUS : 0;
+      // Penalidade agressiva para cada nota além de 3 — extensões precisam "merecer" existir
+      const complexityPenalty = Math.max(0, fullChordNotes.length - 3) * COMPLEXITY_PENALTY_PER_NOTE;
 
-      if (finalScore > bestScore) {
-        bestScore = finalScore;
-        bestChord = fullChordName;
+      let finalScore = (noteScore * 1.0) + (combinedStyleProb * WEIGHT_MARKOV) + triadBonus - complexityPenalty;
+
+      // ── Heurística de Repetição ─────────────────────────
+      // Penaliza fortemente acordes consecutivos com a mesma
+      // base harmônica para evitar estagnação (ex: Gm -> Gm -> Gm)
+      // ─────────────────────────────────────────────────
+      if (chordHistory.length >= 2 && baseRoman === currRoman) {
+        finalScore -= PENALTY_REPETITION;
+        if (chordHistory.length >= 3 && prevRoman === currRoman) {
+          finalScore -= PENALTY_SEVERE_REPETITION;
+        }
       }
+
+      // ── Heurística de Cadência Final ──────────────────
+      //  Classifica a função harmônica do candidato pelo
+      //  seu grau relativo (numeral romano) na tonalidade
+      //  de C Major (espaço interno do motor).
+      // ─────────────────────────────────────────────────
+      if (cadenceCtx.isPenultimateWindow || cadenceCtx.isFinalWindow) {
+        const candidateRomanUpper = baseRoman.toUpperCase();
+
+        // Identifica funções harmônicas pelo grau
+        const isDominant = candidateRomanUpper === "V" || baseRoman === "V" || baseRoman === "V7";
+        const isSubdominant = candidateRomanUpper === "IV";
+        const isTonic = candidateRomanUpper === "I";
+        const isTensionChord = baseRoman === "V7" || isDominant
+          || baseRoman.toLowerCase().includes("dim")
+          || (baseRoman.includes("7") && !isTonic);
+
+        if (cadenceCtx.isPenultimateWindow) {
+          // ── PENÚLTIMA JANELA: Preparação ──────────────
+          //  Privilegia V, V7 e IV para criar tensão
+          //  gravitacional antes da resolução final.
+          if (isDominant) {
+            finalScore += WEIGHT_CADENCE_PREP * 1.5; // V/V7 são preferidos
+          } else if (isSubdominant) {
+            finalScore += WEIGHT_CADENCE_PREP;        // IV também prepara (plagal)
+          }
+        }
+
+        if (cadenceCtx.isFinalWindow) {
+          // ── ÚLTIMA JANELA: Resolução / Pouso ──────────
+          //  Peso massivo na tônica (I ou i). A música
+          //  DEVE pousar na tônica. Penalidade esmagadora
+          //  em dominantes, diminutos e acordes de passagem.
+          if (isTonic) {
+            finalScore += WEIGHT_FINAL_RESOLUTION;
+          } else if (isTensionChord) {
+            finalScore += PENALTY_FINAL_TENSION;
+          }
+        }
+      }
+
+      candidates.push({ chord: fullChordName, score: finalScore });
+    }
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+
+  let bestChord = currentChord;
+
+  if (candidates.length > 0) {
+    if (isReroll && candidates.length >= 2) {
+      const poolSize = Math.min(3, candidates.length);
+      // Ponderação Simples: 50% pro 1º, 30% pro 2º, 20% pro 3º
+      const rand = Math.random();
+      if (rand < 0.5) bestChord = candidates[0].chord;
+      else if (rand < 0.8 && poolSize > 1) bestChord = candidates[1].chord;
+      else bestChord = candidates[poolSize - 1].chord;
+    } else {
+      bestChord = candidates[0].chord;
     }
   }
 
@@ -423,6 +526,7 @@ export function generateProgression(
   timeSignatureDenominator: number,
   startChord: string = "C",
   model: TwoTierMarkovModel = markovModel,
+  isReroll: boolean = false
 ): readonly { chord: string, velocity: number }[] {
   if (playedNotes.length === 0) return [{ chord: startChord, velocity: 0.7 }];
 
@@ -452,12 +556,20 @@ export function generateProgression(
       endTime: Math.min(n.endTime, windowEnd),
     }));
 
+    // ── Consciência Temporal: identifica as duas últimas janelas ──
+    const cadenceCtx: CadenceContext = {
+      isPenultimateWindow: windowCount >= 2 && w === windowCount - 2,
+      isFinalWindow: windowCount >= 2 && w === windowCount - 1,
+    };
+
     const result = determineNextChord(
       history,
       clippedNotes,
       windowStart,
       secondsPerBeat,
-      model
+      model,
+      isReroll,
+      cadenceCtx
     );
     progression.push(result);
     history.push(result.chord);
